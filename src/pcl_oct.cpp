@@ -108,6 +108,8 @@ public:
                 "The number of points in the input pointcloud is %i",
                 num_points);
     pcl::fromROSMsg(*msg, *this->cloud);
+    voxel_downsample(this->cloud, cloud_filtered);
+    plane_seg(this->cloud_filtered);
     geometry_msgs::msg::TransformStamped sensor_to_world_transform_stamped;
     try {
       sensor_to_world_transform_stamped = tf_buffer->lookupTransform(
@@ -123,20 +125,20 @@ public:
     // calcSurfaceNormals_normal_method(this->cloud, cloud_normals);
     // findClusters(this->cloud, cloud_normals, surfaces);
     // voxel_downsample(this->cloud, cloud_filtered);
-    pcl::transformPointCloud(*this->cloud, *this->cloud, sensor_to_world);
+    pcl::transformPointCloud(*this->cloud_filtered, *this->cloud_filtered,
+                             sensor_to_world);
     const auto &t = sensor_to_world_transform_stamped.transform.translation;
     tf2::Vector3 sensor_to_world_vec3{t.x, t.y, t.z};
     // pcl_conv_oct(this->cloud, sensor_to_world_vec3);
-    // plane_seg(this->cloud);
-    voxel_downsample(this->cloud, cloud_filtered);
+
     pcl_conv_oct(sensor_to_world_vec3, this->cloud_filtered);
 
     // num_points = surfaces->width;
     // RCLCPP_INFO(this->get_logger(),
     // "The number of points in the output pointcloud is %i",
     // num_points);
-    pcl::toROSMsg(*this->cloud_filtered, surf);
-    this->pcl_ground_publisher->publish(surf);
+    // pcl::toROSMsg(*this->cloud_filtered, surf);
+    // this->pcl_ground_publisher->publish(surf);
     // pcl::visualization::PCLVisualizer viewer("PCL Viewer");
     // viewer.setBackgroundColor(0.0, 0.0, 0.5);
     // viewer->setBackgroundColor(0.0, 0.0, 0.5);
