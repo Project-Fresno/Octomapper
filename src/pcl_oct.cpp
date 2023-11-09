@@ -81,7 +81,6 @@ public:
   pcl_oct() : Node("pcl_oct") {
     subscription = this->create_subscription<sensor_msgs::msg::PointCloud2>(
         "/depth_camera/points", 10,
-
         std::bind(&pcl_oct::pcl_topic_callback, this, _1));
     pcl_ground_publisher =
         this->create_publisher<sensor_msgs::msg::PointCloud2>("surfaces", 10);
