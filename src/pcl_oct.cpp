@@ -61,7 +61,8 @@ private:
   sensor_msgs::msg::PointCloud2 surf;
   pcl::PointIndices::Ptr inliers = pcl::make_shared<pcl::PointIndices>();
   pcl::ExtractIndices<pcl::PointXYZ> extract;
-  pcl::PointCloud<pcl::PointXYZ> cloud_p;
+  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_p =
+      pcl::make_shared<pcl::PointCloud<POINT_TYPE>>();
   std::unique_ptr<OcTreeT> octree_;
   double res_;
   size_t tree_depth_;
@@ -109,7 +110,6 @@ public:
                 num_points);
     pcl::fromROSMsg(*msg, *this->cloud);
     voxel_downsample(this->cloud, cloud_filtered);
-    plane_seg(this->cloud_filtered);
     geometry_msgs::msg::TransformStamped sensor_to_world_transform_stamped;
     try {
       sensor_to_world_transform_stamped = tf_buffer->lookupTransform(
@@ -130,8 +130,8 @@ public:
     const auto &t = sensor_to_world_transform_stamped.transform.translation;
     tf2::Vector3 sensor_to_world_vec3{t.x, t.y, t.z};
     // pcl_conv_oct(this->cloud, sensor_to_world_vec3);
-
-    pcl_conv_oct(sensor_to_world_vec3, this->cloud_filtered);
+    plane_seg(this->cloud_filtered);
+    pcl_conv_oct(sensor_to_world_vec3, this->cloud_p, this->cloud_o);
 
     // num_points = surfaces->width;
     // RCLCPP_INFO(this->get_logger(),
@@ -164,11 +164,49 @@ public:
 
 public:
   void pcl_conv_oct(const tf2::Vector3 &sensor_origin_tf,
-                    const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud) {
+                    const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud_obs,
+                    const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud_ground) {
     const auto sensor_origin = octomap::pointTfToOctomap(sensor_origin_tf);
     octomap::KeySet free_cells, occupied_cells;
-    for (pcl::PointCloud<pcl::PointXYZ>::const_iterator it = cloud->begin();
-         it != cloud->end(); it++) {
+    // For ground pcl, mark all cells free
+    for (pcl::PointCloud<POINT_TYPE>::const_iterator it = cloud_ground->begin();
+         it != cloud_ground->end(); it++) {
+      octomap::point3d point(it->x, it->y, it->z);
+      if (it->x != std::numeric_limits<double>::infinity()) {
+        if ((max_range < 0.0) ||
+            ((point - sensor_origin).norm() <= max_range)) {
+          if (octree_->computeRayKeys(sensor_origin, point, key_ray_)) {
+            free_cells.insert(key_ray_.begin(), key_ray_.end());
+          }
+          octomap::OcTreeKey key;
+          if (octree_->coordToKeyChecked(point, key)) {
+            occupied_cells.insert(key);
+          }
+        } else {
+          octomap::point3d new_end =
+              sensor_origin + (point - sensor_origin).normalized() * max_range;
+          if (octree_->computeRayKeys(sensor_origin, new_end, key_ray_)) {
+            free_cells.insert(key_ray_.begin(), key_ray_.end());
+
+            octomap::point3d new_end =
+                sensor_origin +
+                (point - sensor_origin).normalized() * max_range;
+            octomap::OcTreeKey end_key;
+
+            if (octree_->coordToKeyChecked(new_end, end_key)) {
+              free_cells.insert(end_key);
+            } else {
+              RCLCPP_ERROR_STREAM(get_logger(),
+                                  "Could not generate Key for endpoint "
+                                      << new_end);
+            }
+          }
+        }
+      }
+    }
+    // For Obstacle pcl
+    for (pcl::PointCloud<pcl::PointXYZ>::const_iterator it = cloud_obs->begin();
+         it != cloud_obs->end(); it++) {
       octomap::point3d point(it->x, it->y, it->z);
       // std::cout << it->x << std::endl;
       if (it->x != std::numeric_limits<double>::infinity()) {
@@ -272,10 +310,10 @@ public:
     extract.setInputCloud(cloud);
     extract.setIndices(inliers);
     extract.setNegative(false);
-    extract.filter(this->cloud_p);
+    extract.filter(*this->cloud_p);
     extract.setNegative(true);
     extract.filter(*this->cloud_o);
-    pcl::toROSMsg(this->cloud_p, plane);
+    pcl::toROSMsg(*this->cloud_p, plane);
     this->pcl_ground_publisher->publish(plane);
     pcl::toROSMsg(*this->cloud_o, obs);
     this->pcl_obs_publisher->publish(obs);
