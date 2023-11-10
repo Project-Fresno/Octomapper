@@ -7,7 +7,7 @@ sudo apt install ros-humble-ocotmap*
 ```
 
 
-##Run
+## Run
 ```sh
 ros2 run octomap_mapper pcl_oct
 ```
