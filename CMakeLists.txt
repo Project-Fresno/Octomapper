@@ -21,7 +21,28 @@ find_package(octomap REQUIRED)
 find_package(tf2_eigen REQUIRED)
 find_package(octomap_msgs REQUIRED)
 
+
+
 add_executable(pcl_oct src/pcl_oct.cpp)
+
+target_link_libraries(pcl_oct
+  ${PCL_LIBRARIES}
+  ${OCTOMAP_LIBRARIES}
+  ${rclcpp_LIBRARIES}
+  ${std_msgs_LIBRARIES}
+  ${pcl_ros_LIBRARIES}
+  ${tf2_eigen_LIBRARIES}
+  ${octomap_msgs_LIBRARIES}
+)
+target_include_directories(pcl_oct PRIVATE
+  ${PCL_INCLUDE_DIRS}
+  ${OCTOMAP_INCLUDE_DIRS}
+  ${rclcpp_INCLUDE_DIRS}
+  ${std_msgs_INCLUDE_DIRS}
+  ${pcl_ros_INCLUDE_DIRS}
+  ${tf2_eigen_INCLUDE_DIRS}
+  ${octomap_msgs_INCLUDE_DIRS}
+)
 
 target_compile_features(pcl_oct PUBLIC c_std_99 cxx_std_17) 
 ament_target_dependencies(pcl_oct
@@ -34,6 +55,7 @@ ament_target_dependencies(pcl_oct
   "tf2_eigen"
 "octomap_msgs"
   )
+
 
 install(TARGETS pcl_oct
   DESTINATION lib/${PROJECT_NAME})

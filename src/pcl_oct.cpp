@@ -156,7 +156,7 @@ public:
     pcl::VoxelGrid<pcl::PointXYZ> sor;
 
     sor.setInputCloud(cloud);
-    sor.setLeafSize(0.05f, 0.05f, 0.05f);
+    sor.setLeafSize(0.08f, 0.08f, 0.08f);
     sor.filter(*cloud_filtered);
     // pcl::fromPCLPointCloud2(*cloud_filteredpcl, cloud_filtered);
   }
