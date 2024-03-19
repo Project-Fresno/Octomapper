@@ -13,6 +13,7 @@
 #include "pcl/common/transforms.h"
 #include "pcl_conversions/pcl_conversions.h"
 #include <pcl/features/normal_3d.h>
+#include <pcl/filters/conditional_removal.h>
 #include <pcl/filters/extract_indices.h>
 #include <pcl/filters/filter.h>
 #include <pcl/filters/voxel_grid.h>
@@ -44,6 +45,7 @@ using std::placeholders::_1;
 class pcl_oct : public rclcpp::Node {
 private:
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr subscription;
+
   pcl::PointCloud<POINT_TYPE>::Ptr cloud =
       pcl::make_shared<pcl::PointCloud<POINT_TYPE>>();
   pcl::PointCloud<POINT_TYPE>::Ptr cloud_filtered =
@@ -52,6 +54,8 @@ private:
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
       pcl_ground_publisher;
   rclcpp::Publisher<octomap_msgs::msg::Octomap>::SharedPtr octomap_publisher;
+  rclcpp::Publisher<octomap_msgs::msg::Octomap>::SharedPtr ground_publisher;
+
   pcl::ModelCoefficients::Ptr coefficients =
       pcl::make_shared<pcl::ModelCoefficients>();
   pcl::PointCloud<POINT_TYPE>::Ptr cloud_o =
@@ -63,6 +67,7 @@ private:
   pcl::ExtractIndices<pcl::PointXYZ> extract;
   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_p =
       pcl::make_shared<pcl::PointCloud<POINT_TYPE>>();
+  pcl::ConditionAnd<POINT_TYPE>::Ptr z_obstacle_cond;
   std::unique_ptr<OcTreeT> octree_;
   double res_;
   size_t tree_depth_;
@@ -70,27 +75,42 @@ private:
   std::shared_ptr<tf2_ros::TransformListener> tf_listener{nullptr};
   std::unique_ptr<tf2_ros::Buffer> tf_buffer;
   octomap::KeyRay key_ray_;
-  float max_range = 20;
+  float max_range = 5;
   int occupancy_min_z_ = -100;
   int occupancy_max_z_ = 100;
   octomap_msgs::msg::Octomap msg;
+  pcl::ConditionalRemoval<pcl::PointXYZ> condrem =
+      pcl::ConditionalRemoval<POINT_TYPE>();
 
   // octomap_msgs::octomap::ConstPtr oct_msg;
 
 public:
   pcl_oct() : Node("pcl_oct") {
     subscription = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-        "/camera/depth/color/points", 10,
+        "/depth_camera/points", 10,
         std::bind(&pcl_oct::pcl_topic_callback, this, _1));
+    // subscription = this->create_subscription<sensor_msgs::msg::PointCloud2>(
+    //     "/camera/depth/color/points", 10,
+    //     std::bind(&pcl_oct::pcl_topic_callback, this, _1));
+
     pcl_ground_publisher =
         this->create_publisher<sensor_msgs::msg::PointCloud2>("surfaces", 10);
     pcl_obs_publisher =
         this->create_publisher<sensor_msgs::msg::PointCloud2>("obs", 10);
     octomap_publisher =
         this->create_publisher<octomap_msgs::msg::Octomap>("oct_msg", 20);
+    ground_publisher = this->create_publisher<octomap_msgs::msg::Octomap>(
+        "ground_oct_msg", 20);
 
     tf_buffer = std::make_unique<tf2_ros::Buffer>(this->get_clock());
     tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer);
+
+    pcl::ConditionAnd<POINT_TYPE>::Ptr range_cond(
+        new pcl::ConditionAnd<POINT_TYPE>());
+    z_obstacle_cond = range_cond;
+    z_obstacle_cond->addComparison(pcl::FieldComparison<POINT_TYPE>::Ptr(
+        new pcl::FieldComparison<POINT_TYPE>("z", pcl::ComparisonOps::GT,
+                                             0.2)));
 
     octree_ = std::make_unique<OcTreeT>(0.05);
     octree_->setProbHit(0.7);
@@ -109,6 +129,7 @@ public:
                 num_points);
     pcl::fromROSMsg(*msg, *this->cloud);
     voxel_downsample(this->cloud, cloud_filtered);
+    // this->cloud_filtered = this->cloud;
     geometry_msgs::msg::TransformStamped sensor_to_world_transform_stamped;
     try {
       sensor_to_world_transform_stamped = tf_buffer->lookupTransform(
@@ -127,10 +148,15 @@ public:
     pcl::transformPointCloud(*this->cloud_filtered, *this->cloud_filtered,
                              sensor_to_world);
     const auto &t = sensor_to_world_transform_stamped.transform.translation;
+    condrem.setInputCloud(this->cloud_filtered);
+    condrem.setCondition(z_obstacle_cond);
+    condrem.filter(*this->cloud_filtered);
+
     tf2::Vector3 sensor_to_world_vec3{t.x, t.y, t.z};
     // pcl_conv_oct(this->cloud, sensor_to_world_vec3);
-    plane_seg(this->cloud_filtered);
-    pcl_conv_oct(sensor_to_world_vec3, this->cloud_p, this->cloud_filtered);
+    // plane_seg(this->cloud_filtered);
+    pcl_conv_oct(sensor_to_world_vec3, this->cloud_filtered,
+                 this->cloud_filtered);
 
     // num_points = surfaces->width;
     // RCLCPP_INFO(this->get_logger(),
@@ -156,7 +182,7 @@ public:
     pcl::VoxelGrid<pcl::PointXYZ> sor;
 
     sor.setInputCloud(cloud);
-    sor.setLeafSize(0.08f, 0.08f, 0.08f);
+    sor.setLeafSize(0.1f, 0.1f, 0.1f);
     sor.filter(*cloud_filtered);
     // pcl::fromPCLPointCloud2(*cloud_filteredpcl, cloud_filtered);
   }
@@ -180,7 +206,7 @@ public:
     //       }
     //       octomap::OcTreeKey key;
     //       if (octree_->coordToKeyChecked(point, key)) {
-    //         occupied_cells.insert(key);
+    //         free_cells.insert(key);
     //       }
     //     } else {
     //       octomap::point3d new_end =
@@ -210,37 +236,35 @@ public:
          it != cloud_obs->end(); it++) {
       octomap::point3d point(it->x, it->y, it->z);
       // std::cout << it->x << std::endl;
-      if (it->x != std::numeric_limits<double>::infinity()) {
-        if ((max_range < 0.0) ||
-            ((point - sensor_origin).norm() <= max_range)) {
-          if (octree_->computeRayKeys(sensor_origin, point, key_ray_)) {
-            free_cells.insert(key_ray_.begin(), key_ray_.end());
-          }
-          octomap::OcTreeKey key;
-          if (octree_->coordToKeyChecked(point, key)) {
-            occupied_cells.insert(key);
-          }
-        } else {
+      // if (it->x != std::numeric_limits<double>::infinity()) {
+      if ((max_range < 0.0) || ((point - sensor_origin).norm() <= max_range)) {
+        if (octree_->computeRayKeys(sensor_origin, point, key_ray_)) {
+          free_cells.insert(key_ray_.begin(), key_ray_.end());
+        }
+        octomap::OcTreeKey key;
+        if (octree_->coordToKeyChecked(point, key)) {
+          occupied_cells.insert(key);
+        }
+      } else {
+        octomap::point3d new_end =
+            sensor_origin + (point - sensor_origin).normalized() * max_range;
+        if (octree_->computeRayKeys(sensor_origin, new_end, key_ray_)) {
+          free_cells.insert(key_ray_.begin(), key_ray_.end());
+
           octomap::point3d new_end =
               sensor_origin + (point - sensor_origin).normalized() * max_range;
-          if (octree_->computeRayKeys(sensor_origin, new_end, key_ray_)) {
-            free_cells.insert(key_ray_.begin(), key_ray_.end());
+          octomap::OcTreeKey end_key;
 
-            octomap::point3d new_end =
-                sensor_origin +
-                (point - sensor_origin).normalized() * max_range;
-            octomap::OcTreeKey end_key;
-
-            if (octree_->coordToKeyChecked(new_end, end_key)) {
-              free_cells.insert(end_key);
-            } else {
-              RCLCPP_ERROR_STREAM(get_logger(),
-                                  "Could not generate Key for endpoint "
-                                      << new_end);
-            }
+          if (octree_->coordToKeyChecked(new_end, end_key)) {
+            free_cells.insert(end_key);
+          } else {
+            RCLCPP_ERROR_STREAM(get_logger(),
+                                "Could not generate Key for endpoint "
+                                    << new_end);
           }
         }
       }
+      // }
     }
     for (auto it = free_cells.begin(), end = free_cells.end(); it != end;
          ++it) {
