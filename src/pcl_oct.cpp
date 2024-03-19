@@ -42,7 +42,8 @@ typedef octomap::OcTree OcTreeT;
 typedef pcl::PointCloud<pcl::Normal> NormalCloud;
 typedef pcl::PointXYZ POINT_TYPE;
 using std::placeholders::_1;
-class pcl_oct : public rclcpp::Node {
+class pcl_oct : public rclcpp::Node
+{
 private:
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr subscription;
 
@@ -85,9 +86,13 @@ private:
   // octomap_msgs::octomap::ConstPtr oct_msg;
 
 public:
-  pcl_oct() : Node("pcl_oct") {
+  pcl_oct() : Node("pcl_oct")
+  {
+    this->declare_parameter<std::string>("depth_topic", "/camera/depth/color/points");
+    this->declare_parameter<double>("ground_cutoff_height", 0.2);
+
     subscription = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-        "/depth_camera/points", 10,
+        this->get_parameter("depth_topic").as_string(), 10,
         std::bind(&pcl_oct::pcl_topic_callback, this, _1));
     // subscription = this->create_subscription<sensor_msgs::msg::PointCloud2>(
     //     "/camera/depth/color/points", 10,
@@ -105,12 +110,13 @@ public:
     tf_buffer = std::make_unique<tf2_ros::Buffer>(this->get_clock());
     tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer);
 
+    // Move to callback to update ground value live
     pcl::ConditionAnd<POINT_TYPE>::Ptr range_cond(
         new pcl::ConditionAnd<POINT_TYPE>());
     z_obstacle_cond = range_cond;
     z_obstacle_cond->addComparison(pcl::FieldComparison<POINT_TYPE>::Ptr(
         new pcl::FieldComparison<POINT_TYPE>("z", pcl::ComparisonOps::GT,
-                                             0.2)));
+                                             this->get_parameter("ground_cutoff_height").as_double())));
 
     octree_ = std::make_unique<OcTreeT>(0.05);
     octree_->setProbHit(0.7);
@@ -122,7 +128,8 @@ public:
   }
 
 public:
-  void pcl_topic_callback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
+  void pcl_topic_callback(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
+  {
     unsigned int num_points = msg->width;
     RCLCPP_INFO(this->get_logger(),
                 "The number of points in the input pointcloud is %i",
@@ -131,10 +138,13 @@ public:
     voxel_downsample(this->cloud, cloud_filtered);
     // this->cloud_filtered = this->cloud;
     geometry_msgs::msg::TransformStamped sensor_to_world_transform_stamped;
-    try {
+    try
+    {
       sensor_to_world_transform_stamped = tf_buffer->lookupTransform(
           "odom", cloud->header.frame_id, tf2::TimePointZero);
-    } catch (const tf2::TransformException &ex) {
+    }
+    catch (const tf2::TransformException &ex)
+    {
       RCLCPP_WARN(this->get_logger(), "%s", ex.what());
       return;
     }
@@ -176,7 +186,8 @@ public:
 
 public:
   void voxel_downsample(const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud,
-                        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_filtered) {
+                        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_filtered)
+  {
     // pcl::toPCLPointCloud2(*cloud, cloudpcl);
 
     pcl::VoxelGrid<pcl::PointXYZ> sor;
@@ -190,7 +201,8 @@ public:
 public:
   void pcl_conv_oct(const tf2::Vector3 &sensor_origin_tf,
                     const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud_obs,
-                    const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud_ground) {
+                    const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud_ground)
+  {
     const auto sensor_origin = octomap::pointTfToOctomap(sensor_origin_tf);
     octomap::KeySet free_cells, occupied_cells;
     // For ground pcl, mark all cells free
@@ -233,31 +245,41 @@ public:
     // }
     // For Obstacle pcl
     for (pcl::PointCloud<pcl::PointXYZ>::const_iterator it = cloud_obs->begin();
-         it != cloud_obs->end(); it++) {
+         it != cloud_obs->end(); it++)
+    {
       octomap::point3d point(it->x, it->y, it->z);
       // std::cout << it->x << std::endl;
       // if (it->x != std::numeric_limits<double>::infinity()) {
-      if ((max_range < 0.0) || ((point - sensor_origin).norm() <= max_range)) {
-        if (octree_->computeRayKeys(sensor_origin, point, key_ray_)) {
+      if ((max_range < 0.0) || ((point - sensor_origin).norm() <= max_range))
+      {
+        if (octree_->computeRayKeys(sensor_origin, point, key_ray_))
+        {
           free_cells.insert(key_ray_.begin(), key_ray_.end());
         }
         octomap::OcTreeKey key;
-        if (octree_->coordToKeyChecked(point, key)) {
+        if (octree_->coordToKeyChecked(point, key))
+        {
           occupied_cells.insert(key);
         }
-      } else {
+      }
+      else
+      {
         octomap::point3d new_end =
             sensor_origin + (point - sensor_origin).normalized() * max_range;
-        if (octree_->computeRayKeys(sensor_origin, new_end, key_ray_)) {
+        if (octree_->computeRayKeys(sensor_origin, new_end, key_ray_))
+        {
           free_cells.insert(key_ray_.begin(), key_ray_.end());
 
           octomap::point3d new_end =
               sensor_origin + (point - sensor_origin).normalized() * max_range;
           octomap::OcTreeKey end_key;
 
-          if (octree_->coordToKeyChecked(new_end, end_key)) {
+          if (octree_->coordToKeyChecked(new_end, end_key))
+          {
             free_cells.insert(end_key);
-          } else {
+          }
+          else
+          {
             RCLCPP_ERROR_STREAM(get_logger(),
                                 "Could not generate Key for endpoint "
                                     << new_end);
@@ -267,15 +289,18 @@ public:
       // }
     }
     for (auto it = free_cells.begin(), end = free_cells.end(); it != end;
-         ++it) {
-      if (occupied_cells.find(*it) == occupied_cells.end()) {
+         ++it)
+    {
+      if (occupied_cells.find(*it) == occupied_cells.end())
+      {
         octree_->updateNode(*it, false);
       }
     }
     std::cout << free_cells.size() << std::endl;
     // now mark all occupied cells:
     for (auto it = occupied_cells.begin(), end = occupied_cells.end();
-         it != end; it++) {
+         it != end; it++)
+    {
       octree_->updateNode(*it, true);
     }
     std::cout << occupied_cells.size() << std::endl;
@@ -305,7 +330,8 @@ public:
   }
 
 public:
-  void plane_seg(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud) {
+  void plane_seg(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud)
+  {
     pcl::SACSegmentation<pcl::PointXYZ> seg;
     seg.setOptimizeCoefficients(true);
     seg.setModelType(pcl::SACMODEL_PLANE);
@@ -345,7 +371,8 @@ public:
   }
 };
 
-int main(int argc, char *argv[]) {
+int main(int argc, char *argv[])
+{
   rclcpp::init(argc, argv);
   rclcpp::spin(std::make_shared<pcl_oct>());
 
