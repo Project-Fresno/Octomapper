@@ -16,6 +16,7 @@
 #include <pcl/filters/conditional_removal.h>
 #include <pcl/filters/extract_indices.h>
 #include <pcl/filters/filter.h>
+#include <pcl/filters/passthrough.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
@@ -68,7 +69,11 @@ private:
   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_p =
       pcl::make_shared<pcl::PointCloud<POINT_TYPE>>();
   pcl::ConditionAnd<POINT_TYPE>::Ptr z_obstacle_cond;
+  pcl::ConditionAnd<POINT_TYPE>::Ptr z_obstacle_cond_inv;
+  // pcl::PassThrough<pcl::PointXYZ> pass;
+
   std::unique_ptr<OcTreeT> octree_;
+
   double res_;
   size_t tree_depth_;
   size_t max_tree_depth_;
@@ -81,7 +86,8 @@ private:
   octomap_msgs::msg::Octomap msg;
   pcl::ConditionalRemoval<pcl::PointXYZ> condrem =
       pcl::ConditionalRemoval<POINT_TYPE>();
-
+  pcl::ConditionalRemoval<pcl::PointXYZ> condrem_inv =
+      pcl::ConditionalRemoval<POINT_TYPE>();
   // octomap_msgs::octomap::ConstPtr oct_msg;
 
 public:
@@ -107,10 +113,16 @@ public:
 
     pcl::ConditionAnd<POINT_TYPE>::Ptr range_cond(
         new pcl::ConditionAnd<POINT_TYPE>());
+    pcl::ConditionAnd<POINT_TYPE>::Ptr range_cond_inv(
+        new pcl::ConditionAnd<POINT_TYPE>());
     z_obstacle_cond = range_cond;
+    z_obstacle_cond_inv = range_cond_inv;
     z_obstacle_cond->addComparison(pcl::FieldComparison<POINT_TYPE>::Ptr(
         new pcl::FieldComparison<POINT_TYPE>("z", pcl::ComparisonOps::GT,
-                                             0.2)));
+                                             0.8)));
+    z_obstacle_cond_inv->addComparison(pcl::FieldComparison<POINT_TYPE>::Ptr(
+        new pcl::FieldComparison<POINT_TYPE>("z", pcl::ComparisonOps::LT,
+                                             0.8)));
 
     octree_ = std::make_unique<OcTreeT>(0.05);
     octree_->setProbHit(0.7);
@@ -130,6 +142,7 @@ public:
     pcl::fromROSMsg(*msg, *this->cloud);
     voxel_downsample(this->cloud, cloud_filtered);
     // this->cloud_filtered = this->cloud;
+
     geometry_msgs::msg::TransformStamped sensor_to_world_transform_stamped;
     try {
       sensor_to_world_transform_stamped = tf_buffer->lookupTransform(
@@ -142,49 +155,33 @@ public:
         tf2::transformToEigen(sensor_to_world_transform_stamped.transform)
             .matrix()
             .cast<float>();
-    // calcSurfaceNormals_normal_method(this->cloud, cloud_normals);
-    // findClusters(this->cloud, cloud_normals, surfaces);
-    // voxel_downsample(this->cloud, cloud_filtered);
     pcl::transformPointCloud(*this->cloud_filtered, *this->cloud_filtered,
                              sensor_to_world);
     const auto &t = sensor_to_world_transform_stamped.transform.translation;
     condrem.setInputCloud(this->cloud_filtered);
     condrem.setCondition(z_obstacle_cond);
-    condrem.filter(*this->cloud_filtered);
+    condrem.filter(*this->cloud_o);
+    // condrem.setNegative(true);
+    condrem_inv.setInputCloud(this->cloud_filtered);
+    condrem_inv.setCondition(z_obstacle_cond_inv);
+    condrem_inv.filter(*this->cloud_p);
+
+    pcl::toROSMsg(*this->cloud_p, plane);
+    plane.header.frame_id = "odom";
+    this->pcl_ground_publisher->publish(plane);
 
     tf2::Vector3 sensor_to_world_vec3{t.x, t.y, t.z};
-    // pcl_conv_oct(this->cloud, sensor_to_world_vec3);
-    // plane_seg(this->cloud_filtered);
-    pcl_conv_oct(sensor_to_world_vec3, this->cloud_filtered,
-                 this->cloud_filtered);
-
-    // num_points = surfaces->width;
-    // RCLCPP_INFO(this->get_logger(),
-    // "The number of points in the output pointcloud is %i",
-    // num_points);
-    // pcl::toROSMsg(*this->cloud_filtered, surf);
-    // this->pcl_ground_publisher->publish(surf);
-    // pcl::visualization::PCLVisualizer viewer("PCL Viewer");
-    // viewer.setBackgroundColor(0.0, 0.0, 0.5);
-    // viewer->setBackgroundColor(0.0, 0.0, 0.5);
-    // viewer.addPointCloudNormals<pcl::PointXYZRGB, pcl::Normal>(
-    // cloud, cloud_normals, 1, 0.1);
-    // viewer.addPointCloud<pcl::PointXYZRGB>(cloud);
-    // while (!viewer.wasStopped()) {
-    // viewer.spinOnce();
+    pcl_conv_oct(sensor_to_world_vec3, this->cloud_o, this->cloud_o);
   }
 
 public:
   void voxel_downsample(const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud,
                         pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_filtered) {
-    // pcl::toPCLPointCloud2(*cloud, cloudpcl);
 
     pcl::VoxelGrid<pcl::PointXYZ> sor;
-
     sor.setInputCloud(cloud);
-    sor.setLeafSize(0.1f, 0.1f, 0.1f);
+    sor.setLeafSize(0.1f, 0.1f, 0.01f);
     sor.filter(*cloud_filtered);
-    // pcl::fromPCLPointCloud2(*cloud_filteredpcl, cloud_filtered);
   }
 
 public:
