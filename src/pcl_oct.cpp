@@ -92,8 +92,12 @@ private:
 
 public:
   pcl_oct() : Node("pcl_oct") {
+    this->declare_parameter<std::string>("depth_topic",
+                                         "/camera/depth/color/points");
+    this->declare_parameter<double>("ground_cutoff_height", 0.2);
+
     subscription = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-        "/depth_camera/points", 10,
+        this->get_parameter("depth_topic").as_string(), 10,
         std::bind(&pcl_oct::pcl_topic_callback, this, _1));
     // subscription = this->create_subscription<sensor_msgs::msg::PointCloud2>(
     //     "/camera/depth/color/points", 10,
@@ -118,11 +122,13 @@ public:
     z_obstacle_cond = range_cond;
     z_obstacle_cond_inv = range_cond_inv;
     z_obstacle_cond->addComparison(pcl::FieldComparison<POINT_TYPE>::Ptr(
-        new pcl::FieldComparison<POINT_TYPE>("z", pcl::ComparisonOps::GT,
-                                             0.8)));
+        new pcl::FieldComparison<POINT_TYPE>(
+            "z", pcl::ComparisonOps::GT,
+            this->get_parameter("ground_cutoff_height").as_double())));
     z_obstacle_cond_inv->addComparison(pcl::FieldComparison<POINT_TYPE>::Ptr(
-        new pcl::FieldComparison<POINT_TYPE>("z", pcl::ComparisonOps::LT,
-                                             0.8)));
+        new pcl::FieldComparison<POINT_TYPE>(
+            "z", pcl::ComparisonOps::LT,
+            this->get_parameter("ground_cutoff_height").as_double())));
 
     octree_ = std::make_unique<OcTreeT>(0.05);
     octree_->setProbHit(0.7);
