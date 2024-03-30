@@ -6,6 +6,7 @@
 // #include "octomap_msgs/octomap_msgs/msg/octomap.hpp"
 #include "octomap_msgs/msg/octomap.hpp"
 #include "octomap_ros/conversions.hpp"
+#include <octomap/ColorOcTree.h>
 #include <octomap/OcTreeKey.h>
 #include <octomap/octomap.h>
 // #include "octomap_msgs/"
@@ -39,7 +40,7 @@
 #include <stdio.h>
 #include <string>
 
-typedef octomap::OcTree OcTreeT;
+typedef octomap::ColorOcTree OcTreeT;
 typedef pcl::PointCloud<pcl::Normal> NormalCloud;
 typedef pcl::PointXYZ POINT_TYPE;
 using std::placeholders::_1;
@@ -73,6 +74,7 @@ private:
   // pcl::PassThrough<pcl::PointXYZ> pass;
 
   std::unique_ptr<OcTreeT> octree_;
+  std::unique_ptr<OcTreeT> octree_ground;
 
   double res_;
   size_t tree_depth_;
@@ -92,9 +94,8 @@ private:
 
 public:
   pcl_oct() : Node("pcl_oct") {
-    this->declare_parameter<std::string>("depth_topic",
-                                         "/camera/depth/color/points");
-    this->declare_parameter<double>("ground_cutoff_height", 0.2);
+    this->declare_parameter<std::string>("depth_topic", "/depth_camera/points");
+    this->declare_parameter<double>("ground_cutoff_height", 0.8);
 
     subscription = this->create_subscription<sensor_msgs::msg::PointCloud2>(
         this->get_parameter("depth_topic").as_string(), 10,
@@ -137,6 +138,14 @@ public:
     octree_->setClampingThresMax(0.97);
     tree_depth_ = octree_->getTreeDepth();
     max_tree_depth_ = tree_depth_;
+
+    // octree_ground = std::make_unique<OcTreeT>(0.05);
+    // octree_ground->setProbHit(0.7);
+    // octree_ground->setProbMiss(0.4);
+    // octree_ground->setClampingThresMin(0.12);
+    // octree_ground->setClampingThresMax(0.97);
+    // tree_depth_ = octree_ground->getTreeDepth();
+    // max_tree_depth_ = tree_depth_;
   }
 
 public:
@@ -177,7 +186,7 @@ public:
     this->pcl_ground_publisher->publish(plane);
 
     tf2::Vector3 sensor_to_world_vec3{t.x, t.y, t.z};
-    pcl_conv_oct(sensor_to_world_vec3, this->cloud_o, this->cloud_o);
+    pcl_conv_oct(sensor_to_world_vec3, this->cloud_o, this->cloud_p);
   }
 
 public:
@@ -197,14 +206,22 @@ public:
     const auto sensor_origin = octomap::pointTfToOctomap(sensor_origin_tf);
     octomap::KeySet free_cells, occupied_cells;
     // For ground pcl, mark all cells free
-    // for (pcl::PointCloud<POINT_TYPE>::const_iterator it =
-    // cloud_ground->begin();
-    //      it != cloud_ground->end(); it++) {
-    //   octomap::point3d point(it->x, it->y, it->z);
-    //   if (it->x != std::numeric_limits<double>::infinity()) {
-    //     if ((max_range < 0.0) ||
-    //         ((point - sensor_origin).norm() <= max_range)) {
-    //       if (octree_->computeRayKeys(sensor_origin, point, key_ray_)) {
+    for (pcl::PointCloud<POINT_TYPE>::const_iterator it = cloud_ground->begin();
+         it != cloud_ground->end(); it++) {
+      octomap::point3d point(it->x, it->y, it->z);
+      if (it->x != std::numeric_limits<double>::infinity()) {
+        if ((max_range < 0.0) ||
+            ((point - sensor_origin).norm() <= max_range)) {
+          octomap::OcTreeKey key;
+          if (octree_->coordToKeyChecked(point, key)) {
+            free_cells.insert(key);
+            // std::cout << key;
+            octree_->averageNodeColor(key, 0, 255, 0);
+          }
+        }
+      }
+    }
+    //      if (octree_->computeRayKeys(sensor_origin, point, key_ray_)) {
     //         free_cells.insert(key_ray_.begin(), key_ray_.end());
     //       }
     //       octomap::OcTreeKey key;
@@ -215,7 +232,8 @@ public:
     //       octomap::point3d new_end =
     //           sensor_origin + (point - sensor_origin).normalized() *
     //           max_range;
-    //       if (octree_->computeRayKeys(sensor_origin, new_end, key_ray_)) {
+    //       if (octree_->computeRayKeys(sensor_origin, new_end,
+    //       key_ray_)) {
     //         free_cells.insert(key_ray_.begin(), key_ray_.end());
     //
     //         octomap::point3d new_end =
@@ -227,7 +245,8 @@ public:
     //           free_cells.insert(end_key);
     //         } else {
     //           RCLCPP_ERROR_STREAM(get_logger(),
-    //                               "Could not generate Key for endpoint "
+    //                               "Could not generate Key for endpoint
+    //                               "
     //                                   << new_end);
     //         }
     //       }
@@ -284,13 +303,20 @@ public:
     std::cout << occupied_cells.size() << std::endl;
     octree_->prune();
     RCLCPP_ERROR_STREAM(get_logger(), "size:" << octree_->size());
-    octomap_msgs::binaryMapToMsg(*this->octree_, msg);
+    octomap_msgs::fullMapToMsg(*this->octree_, msg);
     msg.header.frame_id = "odom";
     // msg.header.stamp = this->get_clock();
     this->octomap_publisher->publish(msg);
     // for (OcTreeT::iterator it = octree_->begin(max_tree_depth_),
-    //                        end = octree_->end();
-    //      it != end; ++it) {
+    // end = octree_->end();
+    // it != end; ++it) {
+    // if (!octree_->isNodeOccupied(*it)) {
+    // if (unsigned(it->getColor().r) != 255) {
+    // std::cout << unsigned(it->getColor().r) <<
+    // unsigned(it->getColor().g)
+    // << unsigned(it->getColor().b) << std::endl;
+    // }
+    // }
     //   if (octree_->isNodeOccupied(*it)) {
     //     double z = it.getZ();
     //     double half_size = it.getSize() / 2.0;
@@ -304,49 +330,49 @@ public:
     //     _point.y = y;
     //     _point.z = z;
     //   }
-    // }
   }
+}
 
-public:
-  void plane_seg(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud) {
-    pcl::SACSegmentation<pcl::PointXYZ> seg;
-    seg.setOptimizeCoefficients(true);
-    seg.setModelType(pcl::SACMODEL_PLANE);
-    seg.setMethodType(pcl::SAC_RANSAC);
-    seg.setDistanceThreshold(0.01);
-    seg.setInputCloud(cloud);
-    seg.segment(*inliers, *coefficients);
-    std::cerr << "Model inliers: " << inliers->indices.size() << std::endl;
-    // for (const auto &idx : inliers->indices)
-    //   std::cerr << idx << "    " << cloud->points[idx].x << " "
-    //             << cloud->points[idx].y << " " << cloud->points[idx].z
-    //             << std::endl;
-    std::cerr << "Model coefficients: " << coefficients->values[0] << " "
-              << coefficients->values[1] << " " << coefficients->values[2]
-              << " " << coefficients->values[3] << std::endl;
-    Eigen::Vector3f plane_normal(coefficients->values[0],
-                                 coefficients->values[1],
-                                 coefficients->values[2]);
-    std::cout << "Normal vector: (" << plane_normal[0] << ", "
-              << plane_normal[1] << ", " << plane_normal[2] << ")" << std::endl;
-    Eigen::Vector3f normalized_normal = plane_normal.normalized();
-    float dot_product = normalized_normal[0] * 0 + normalized_normal[1] * 0 +
-                        normalized_normal[2] * 1;
-    float slope = std::acos(dot_product);
-    float theta = std::atan(slope) * 180 / M_PI;
-    std::cout << "Theta: " << theta << std::endl;
-    extract.setInputCloud(cloud);
-    extract.setIndices(inliers);
-    extract.setNegative(false);
-    extract.filter(*this->cloud_p);
-    extract.setNegative(true);
-    extract.filter(*this->cloud_o);
-    pcl::toROSMsg(*this->cloud_p, plane);
-    this->pcl_ground_publisher->publish(plane);
-    pcl::toROSMsg(*this->cloud_o, obs);
-    this->pcl_obs_publisher->publish(obs);
-  }
-};
+public : void
+         plane_seg(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud) {
+  pcl::SACSegmentation<pcl::PointXYZ> seg;
+  seg.setOptimizeCoefficients(true);
+  seg.setModelType(pcl::SACMODEL_PLANE);
+  seg.setMethodType(pcl::SAC_RANSAC);
+  seg.setDistanceThreshold(0.01);
+  seg.setInputCloud(cloud);
+  seg.segment(*inliers, *coefficients);
+  std::cerr << "Model inliers: " << inliers->indices.size() << std::endl;
+  // for (const auto &idx : inliers->indices)
+  //   std::cerr << idx << "    " << cloud->points[idx].x << " "
+  //             << cloud->points[idx].y << " " << cloud->points[idx].z
+  //             << std::endl;
+  std::cerr << "Model coefficients: " << coefficients->values[0] << " "
+            << coefficients->values[1] << " " << coefficients->values[2] << " "
+            << coefficients->values[3] << std::endl;
+  Eigen::Vector3f plane_normal(coefficients->values[0], coefficients->values[1],
+                               coefficients->values[2]);
+  std::cout << "Normal vector: (" << plane_normal[0] << ", " << plane_normal[1]
+            << ", " << plane_normal[2] << ")" << std::endl;
+  Eigen::Vector3f normalized_normal = plane_normal.normalized();
+  float dot_product = normalized_normal[0] * 0 + normalized_normal[1] * 0 +
+                      normalized_normal[2] * 1;
+  float slope = std::acos(dot_product);
+  float theta = std::atan(slope) * 180 / M_PI;
+  std::cout << "Theta: " << theta << std::endl;
+  extract.setInputCloud(cloud);
+  extract.setIndices(inliers);
+  extract.setNegative(false);
+  extract.filter(*this->cloud_p);
+  extract.setNegative(true);
+  extract.filter(*this->cloud_o);
+  pcl::toROSMsg(*this->cloud_p, plane);
+  this->pcl_ground_publisher->publish(plane);
+  pcl::toROSMsg(*this->cloud_o, obs);
+  this->pcl_obs_publisher->publish(obs);
+}
+}
+;
 
 int main(int argc, char *argv[]) {
   rclcpp::init(argc, argv);
