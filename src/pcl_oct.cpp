@@ -108,7 +108,11 @@ private:
 
 public:
   pcl_oct() : Node("pcl_oct") {
-    this->declare_parameter<std::string>("depth_topic", "/depth_camera/points");
+    // this->declare_parameter<std::string>("depth_topic",
+    // "/depth_camera/points");
+    this->declare_parameter<std::string>("depth_topic",
+                                         // "/camera/depth/color/points");
+                                         "/depth_camera/points");
     this->declare_parameter<double>("ground_cutoff_height", 0.8);
 
     subscription = this->create_subscription<sensor_msgs::msg::PointCloud2>(
@@ -145,7 +149,7 @@ public:
             "z", pcl::ComparisonOps::LT,
             this->get_parameter("ground_cutoff_height").as_double())));
 
-    octree_ = std::make_unique<OcTreeT>(0.08);
+    octree_ = std::make_unique<OcTreeT>(0.1);
     octree_->setProbHit(0.65);
     octree_->setProbMiss(0.45);
     octree_->setClampingThresMin(0.12);
@@ -321,11 +325,12 @@ public:
          it != end; ++it) {
       auto time_it = timestamp_map.find(it.getKey());
       if (time_it != timestamp_map.end()) {
+        std::cout << it.getKey()[0];
         std::cout << this->get_clock()->now().nanoseconds() - time_it->second
                   << "\n";
         if ((this->get_clock()->now().nanoseconds() - time_it->second) /
-                1000000 >
-            1000) {
+                100000 >
+            100000) {
           it->setLogOdds(octomap::logodds(0.0));
           timestamp_map.erase(time_it);
         }
