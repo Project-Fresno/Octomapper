@@ -20,9 +20,11 @@ find_package(Eigen REQUIRED)
 find_package(octomap REQUIRED)
 find_package(tf2_eigen REQUIRED)
 find_package(octomap_msgs REQUIRED)
-
-
-
+find_package(nav_msgs REQUIRED)
+find_package(grid_map REQUIRED)
+find_package(grid_map_core REQUIRED)
+find_package(grid_map_ros REQUIRED)
+find_package(grid_map_octomap REQUIRED)
 add_executable(pcl_oct src/pcl_oct.cpp)
 
 target_link_libraries(pcl_oct
@@ -54,6 +56,11 @@ ament_target_dependencies(pcl_oct
   "octomap"
   "tf2_eigen"
 "octomap_msgs"
+"nav_msgs"
+ "grid_map"
+ "grid_map_core"
+ "grid_map_ros"
+ "grid_map_octomap"
   )
 
 

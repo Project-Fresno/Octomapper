@@ -10,6 +10,10 @@
 #include <octomap/OcTreeKey.h>
 #include <octomap/octomap.h>
 // #include "octomap_msgs/"
+#include "grid_map_ros/grid_map_ros.hpp"
+#include "nav_msgs/msg/occupancy_grid.hpp"
+#include <grid_map_core/GridMap.hpp>
+#include <grid_map_octomap/GridMapOctomapConverter.hpp>
 
 #include "pcl/common/transforms.h"
 #include "pcl_conversions/pcl_conversions.h"
@@ -40,7 +44,7 @@
 #include <stdio.h>
 #include <string>
 
-typedef octomap::ColorOcTree OcTreeT;
+typedef octomap::OcTree OcTreeT;
 typedef pcl::PointCloud<pcl::Normal> NormalCloud;
 typedef pcl::PointXYZ POINT_TYPE;
 using std::placeholders::_1;
@@ -68,6 +72,7 @@ private:
       pcl_ground_publisher;
   rclcpp::Publisher<octomap_msgs::msg::Octomap>::SharedPtr octomap_publisher;
   rclcpp::Publisher<octomap_msgs::msg::Octomap>::SharedPtr ground_publisher;
+  rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr grid_map_publisher;
 
   pcl::ModelCoefficients::Ptr coefficients =
       pcl::make_shared<pcl::ModelCoefficients>();
@@ -105,15 +110,18 @@ private:
   pcl::ConditionalRemoval<pcl::PointXYZ> condrem_inv =
       pcl::ConditionalRemoval<POINT_TYPE>();
   // octomap_msgs::octomap::ConstPtr oct_msg;
+  //
+  nav_msgs::msg::OccupancyGrid _grid;
+  grid_map::GridMap gridMap;
 
 public:
   pcl_oct() : Node("pcl_oct") {
     // this->declare_parameter<std::string>("depth_topic",
     // "/depth_camera/points");
     this->declare_parameter<std::string>("depth_topic",
-                                         // "/camera/depth/color/points");
-                                         "/depth_camera/points");
-    this->declare_parameter<double>("ground_cutoff_height", 0.8);
+                                         "/camera/depth/color/points");
+    // "/depth_camera/points");
+    this->declare_parameter<double>("ground_cutoff_height", 0.5);
 
     subscription = this->create_subscription<sensor_msgs::msg::PointCloud2>(
         this->get_parameter("depth_topic").as_string(), 10,
@@ -130,6 +138,8 @@ public:
         this->create_publisher<octomap_msgs::msg::Octomap>("oct_msg", 20);
     ground_publisher = this->create_publisher<octomap_msgs::msg::Octomap>(
         "ground_oct_msg", 20);
+    grid_map_publisher =
+        this->create_publisher<nav_msgs::msg::OccupancyGrid>("grid_msg", 10);
 
     tf_buffer = std::make_unique<tf2_ros::Buffer>(this->get_clock());
     tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer);
@@ -156,7 +166,6 @@ public:
     octree_->setClampingThresMax(0.95);
     tree_depth_ = octree_->getTreeDepth();
     max_tree_depth_ = tree_depth_;
-
     // octree_ground = std::make_unique<OcTreeT>(0.05);
     // octree_ground->setProbHit(0.7);
     // octree_ground->setProbMiss(0.4);
@@ -164,6 +173,7 @@ public:
     // octree_ground->setClampingThresMax(0.97);
     // tree_depth_ = octree_ground->getTreeDepth();
     // max_tree_depth_ = 10;
+    //
   }
 
 public:
@@ -224,21 +234,22 @@ public:
     const auto sensor_origin = octomap::pointTfToOctomap(sensor_origin_tf);
     octomap::KeySet free_cells, occupied_cells;
     // For ground pcl, mark all cells free
-    for (pcl::PointCloud<POINT_TYPE>::const_iterator it = cloud_ground->begin();
-         it != cloud_ground->end(); it++) {
-      octomap::point3d point(it->x, it->y, it->z);
-      if (it->x != std::numeric_limits<double>::infinity()) {
-        if ((max_range < 0.0) ||
-            ((point - sensor_origin).norm() <= max_range)) {
-          octomap::OcTreeKey key;
-          if (octree_->coordToKeyChecked(point, key)) {
-            free_cells.insert(key);
-            // std::cout << key;
-            octree_->averageNodeColor(key, 0, 255, 0);
-          }
-        }
-      }
-    }
+    // for (pcl::PointCloud<POINT_TYPE>::const_iterator it =
+    // cloud_ground->begin();
+    //      it != cloud_ground->end(); it++) {
+    //   octomap::point3d point(it->x, it->y, it->z);
+    //   if (it->x != std::numeric_limits<double>::infinity()) {
+    //     if ((max_range < 0.0) ||
+    //         ((point - sensor_origin).norm() <= max_range)) {
+    //       octomap::OcTreeKey key;
+    //       if (octree_->coordToKeyChecked(point, key)) {
+    //         free_cells.insert(key);
+    //         // std::cout << key;
+    //         // octree_->averageNodeColor(key, 0, 255, 0);
+    //       }
+    //     }
+    //   }
+    // }
     //      if (octree_->computeRayKeys(sensor_origin, point, key_ray_)) {
     //         free_cells.insert(key_ray_.begin(), key_ray_.end());
     //       }
@@ -319,7 +330,6 @@ public:
       timestamp_map[*it] = this->get_clock()->now().nanoseconds();
     }
     // msg.header.stamp = this->get_clock();
-    this->octomap_publisher->publish(msg);
     for (OcTreeT::iterator it = octree_->begin_leafs(),
                            end = octree_->end_leafs();
          it != end; ++it) {
@@ -341,6 +351,7 @@ public:
     RCLCPP_ERROR_STREAM(get_logger(), "size:" << octree_->size());
     octomap_msgs::fullMapToMsg(*this->octree_, msg);
     msg.header.frame_id = "odom";
+    this->octomap_publisher->publish(msg);
 
     //   if (octree_->isNodeOccupied(*it)) {
     //     double z = it.getZ();
@@ -355,6 +366,18 @@ public:
     //     _point.y = y;
     //     _point.z = z;
     //   }
+    bool res = grid_map::GridMapOctomapConverter::fromOctomap(
+        *octree_, "elevation", gridMap);
+    // std::cout << gridM std::endl;
+    if (res) {
+      grid_map::GridMapRosConverter::toOccupancyGrid(gridMap, "elevation",
+                                                     100.0, -1.0, _grid);
+      _grid.header.frame_id = "odom";
+      this->grid_map_publisher->publish(_grid);
+      std::cout << "grid_size " << _grid.info.width << "\n";
+    } else {
+      std::cout << "Error";
+    }
   }
 
 public:
