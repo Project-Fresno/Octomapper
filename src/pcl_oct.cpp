@@ -118,10 +118,9 @@ public:
   pcl_oct() : Node("pcl_oct") {
     // this->declare_parameter<std::string>("depth_topic",
     // "/depth_camera/points");
-    this->declare_parameter<std::string>("depth_topic",
-                                         "/camera/depth/color/points");
+    this->declare_parameter<std::string>("depth_topic", "/depth_camera/points");
     // "/depth_camera/points");
-    this->declare_parameter<double>("ground_cutoff_height", 0.5);
+    this->declare_parameter<double>("ground_cutoff_height", 0.8);
 
     subscription = this->create_subscription<sensor_msgs::msg::PointCloud2>(
         this->get_parameter("depth_topic").as_string(), 10,
@@ -223,7 +222,7 @@ public:
 
     pcl::VoxelGrid<pcl::PointXYZ> sor;
     sor.setInputCloud(cloud);
-    sor.setLeafSize(0.1f, 0.1f, 0.01f);
+    sor.setLeafSize(0.1f, 0.1f, 0.1f);
     sor.filter(*cloud_filtered);
   }
 
@@ -244,8 +243,8 @@ public:
     //       octomap::OcTreeKey key;
     //       if (octree_->coordToKeyChecked(point, key)) {
     //         free_cells.insert(key);
-    //         // std::cout << key;
-    //         // octree_->averageNodeColor(key, 0, 255, 0);
+    //         // td::cout << key;
+    //         octree_->averageNodeColor(key, 0, 255, 0);
     //       }
     //     }
     //   }
@@ -323,6 +322,7 @@ public:
       }
     }
     std::cout << free_cells.size() << std::endl;
+    this->octomap_publisher->publish(msg);
     // now mark all occupied cells:
     for (auto it = occupied_cells.begin(), end = occupied_cells.end();
          it != end; it++) {
@@ -344,6 +344,9 @@ public:
           it->setLogOdds(octomap::logodds(0.0));
           timestamp_map.erase(time_it);
         }
+        // if (isSpeckleNode(it.getKey())) {
+        //   it->setLogOdds(octomap::logodds(0.0));
+        // }
       }
     }
     std::cout << occupied_cells.size() << std::endl;
@@ -351,7 +354,6 @@ public:
     RCLCPP_ERROR_STREAM(get_logger(), "size:" << octree_->size());
     octomap_msgs::fullMapToMsg(*this->octree_, msg);
     msg.header.frame_id = "odom";
-    this->octomap_publisher->publish(msg);
 
     //   if (octree_->isNodeOccupied(*it)) {
     //     double z = it.getZ();
@@ -418,6 +420,28 @@ public:
     this->pcl_ground_publisher->publish(plane);
     pcl::toROSMsg(*this->cloud_o, obs);
     this->pcl_obs_publisher->publish(obs);
+  }
+  bool isSpeckleNode(const octomap::OcTreeKey &n_key) const {
+    octomap::OcTreeKey key;
+    bool neighbor_found = false;
+    for (key[2] = n_key[2] - 1; !neighbor_found && key[2] <= n_key[2] + 1;
+         ++key[2]) {
+      for (key[1] = n_key[1] - 1; !neighbor_found && key[1] <= n_key[1] + 1;
+           ++key[1]) {
+        for (key[0] = n_key[0] - 1; !neighbor_found && key[0] <= n_key[0] + 1;
+             ++key[0]) {
+          if (key != n_key) {
+            octomap::OcTreeNode *node = octree_->search(key);
+            if (node && octree_->isNodeOccupied(node)) {
+              // we have a neighbor=> break!
+              neighbor_found = true;
+            }
+          }
+        }
+      }
+    }
+
+    return neighbor_found;
   }
 };
 
