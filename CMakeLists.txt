@@ -25,6 +25,8 @@ find_package(grid_map REQUIRED)
 find_package(grid_map_core REQUIRED)
 find_package(grid_map_ros REQUIRED)
 find_package(grid_map_octomap REQUIRED)
+find_package(grid_map_cv REQUIRED)
+
 add_executable(pcl_oct src/pcl_oct.cpp)
 
 target_link_libraries(pcl_oct

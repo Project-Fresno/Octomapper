@@ -10,6 +10,7 @@
 #include <octomap/OcTreeKey.h>
 #include <octomap/octomap.h>
 // #include "octomap_msgs/"
+#include "grid_map_cv/GridMapCvConverter.hpp"
 #include "grid_map_ros/grid_map_ros.hpp"
 #include "nav_msgs/msg/occupancy_grid.hpp"
 #include <grid_map_core/GridMap.hpp>
@@ -43,6 +44,8 @@
 #include <memory>
 #include <stdio.h>
 #include <string>
+
+#include <opencv2/opencv.hpp>
 
 typedef octomap::OcTree OcTreeT;
 typedef pcl::PointCloud<pcl::Normal> NormalCloud;
@@ -101,7 +104,7 @@ private:
   std::shared_ptr<tf2_ros::TransformListener> tf_listener{nullptr};
   std::unique_ptr<tf2_ros::Buffer> tf_buffer;
   octomap::KeyRay key_ray_;
-  float max_range = 5;
+  float max_range = 10;
   int occupancy_min_z_ = -100;
   int occupancy_max_z_ = 100;
   octomap_msgs::msg::Octomap msg;
@@ -113,6 +116,8 @@ private:
   //
   nav_msgs::msg::OccupancyGrid _grid;
   grid_map::GridMap gridMap;
+  cv::Mat map_img;
+  cv::Mat gray_img;
 
 public:
   pcl_oct() : Node("pcl_oct") {
@@ -120,7 +125,7 @@ public:
     // "/depth_camera/points");
     this->declare_parameter<std::string>("depth_topic", "/depth_camera/points");
     // "/depth_camera/points");
-    this->declare_parameter<double>("ground_cutoff_height", 0.8);
+    this->declare_parameter<double>("ground_cutoff_height", 0.2);
 
     subscription = this->create_subscription<sensor_msgs::msg::PointCloud2>(
         this->get_parameter("depth_topic").as_string(), 10,
@@ -372,8 +377,46 @@ public:
         *octree_, "elevation", gridMap);
     // std::cout << gridM std::endl;
     if (res) {
-      grid_map::GridMapRosConverter::toOccupancyGrid(gridMap, "elevation",
-                                                     100.0, -1.0, _grid);
+      // grid_map::GridMapRosConverter::toOccupancyGrid(gridMap, "elevation",
+      // 100.0, -1.0, _grid);
+
+      for (int r = 0; r < gridMap.get("elevation").rows(); r++) {
+        for (int c = 0; c < gridMap.get("elevation").cols(); c++) {
+          if (std::isnan(gridMap.get("elevation")(r, c))) {
+            gridMap.get("elevation")(r, c) = -1;
+          }
+        }
+      }
+      // replaceNan(gridMap.get("elevation"), -1);
+      grid_map::GridMapCvConverter::toImage<unsigned char, 4>(
+          gridMap, "elevation", CV_8UC4, 0, 100, map_img);
+      // cv::imshow("orginal", map_img);
+      // cv::waitKey(0);
+      cv::cvtColor(map_img, gray_img, cv::COLOR_BGR2GRAY);
+
+      cv::GaussianBlur(gray_img, map_img, cv::Size(11, 11), 7, 7);
+      grid_map::GridMapCvConverter::addLayerFromImage<unsigned char, 4>(
+          map_img, "inflation", gridMap, 0, 100);
+      // std::cout << gridMap.get("elevation") << "\n";
+      for (int r = 0; r < gridMap.get("inflation").rows(); r++) {
+        for (int c = 0; c < gridMap.get("inflation").cols(); c++) {
+          if (gridMap.get("elevation")(r, c) == -1) {
+            gridMap.get("elevation")(r, c) = 0;
+          }
+
+          gridMap.get("inflation")(r, c) =
+              (gridMap.get("inflation")(r, c) + gridMap.get("elevation")(r, c));
+          if (gridMap.get("inflation")(r, c) > 1) {
+            gridMap.get("inflation")(r, c) = 1;
+          }
+        }
+      }
+      std::cout << gridMap.get("inflation") << "\n";
+      grid_map::GridMapRosConverter::toOccupancyGrid(gridMap, "inflation", 0, 1,
+                                                     _grid);
+      // cv::imshow("Blured", map_img);
+      // cv::waitKey(0);
+
       _grid.header.frame_id = "odom";
       this->grid_map_publisher->publish(_grid);
       std::cout << "grid_size " << _grid.info.width << "\n";
@@ -442,6 +485,10 @@ public:
     }
 
     return neighbor_found;
+  }
+  grid_map::Matrix replaceNan(grid_map::Matrix &m, const double newValue) {
+
+    return m;
   }
 };
 

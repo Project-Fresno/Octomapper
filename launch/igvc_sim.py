@@ -9,8 +9,8 @@ def generate_launch_description():
             name="octomapper",
             output="screen",
             parameters=[
-                {"depth_topic": "/camera/depth/color/points",
-                 "ground_cutoff_height": 0.2}
+                {"depth_topic": "/depth_camera/points",
+                 "ground_cutoff_height": 0.8}
             ]
         )
     ])
