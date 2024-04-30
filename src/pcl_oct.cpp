@@ -153,7 +153,10 @@ public:
     pcl::ConditionAnd<POINT_TYPE>::Ptr range_cond_inv(
         new pcl::ConditionAnd<POINT_TYPE>());
     z_obstacle_cond = range_cond;
-    z_obstacle_cond_inv = range_cond_inv;
+    z_obstacle_cond_inv = range_coMat element = getStructuringElement(
+        dilation_type, Size(2 * dilation_size + 1, 2 * dilation_size + 1),
+        Point(dilation_size, dilation_size));
+    nd_inv;
     z_obstacle_cond->addComparison(pcl::FieldComparison<POINT_TYPE>::Ptr(
         new pcl::FieldComparison<POINT_TYPE>(
             "z", pcl::ComparisonOps::GT,
@@ -393,7 +396,7 @@ public:
       // cv::imshow("orginal", map_img);
       // cv::waitKey(0);
       cv::cvtColor(map_img, gray_img, cv::COLOR_BGR2GRAY);
-
+      // TODO gray_img dialate it
       cv::GaussianBlur(gray_img, map_img, cv::Size(11, 11), 7, 7);
       grid_map::GridMapCvConverter::addLayerFromImage<unsigned char, 4>(
           map_img, "inflation", gridMap, 0, 100);
