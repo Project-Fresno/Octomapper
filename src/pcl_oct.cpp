@@ -153,10 +153,7 @@ public:
     pcl::ConditionAnd<POINT_TYPE>::Ptr range_cond_inv(
         new pcl::ConditionAnd<POINT_TYPE>());
     z_obstacle_cond = range_cond;
-    z_obstacle_cond_inv = range_coMat element = getStructuringElement(
-        dilation_type, Size(2 * dilation_size + 1, 2 * dilation_size + 1),
-        Point(dilation_size, dilation_size));
-    nd_inv;
+    z_obstacle_cond_inv = range_cond_inv;
     z_obstacle_cond->addComparison(pcl::FieldComparison<POINT_TYPE>::Ptr(
         new pcl::FieldComparison<POINT_TYPE>(
             "z", pcl::ComparisonOps::GT,
