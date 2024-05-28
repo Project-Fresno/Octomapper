@@ -62,8 +62,7 @@ using std::placeholders::_1;
 //   double timestamp;
 // };
 
-class pcl_oct : public rclcpp::Node
-{
+class pcl_oct : public rclcpp::Node {
 private:
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr subscription;
 
@@ -121,8 +120,7 @@ private:
   cv::Mat gray_img;
 
 public:
-  pcl_oct() : Node("pcl_oct")
-  {
+  pcl_oct() : Node("pcl_oct") {
     // this->declare_parameter<std::string>("depth_topic",
     // "/depth_camera/points");
     this->declare_parameter<std::string>("depth_topic", "/depth_camera/points");
@@ -183,8 +181,7 @@ public:
   }
 
 public:
-  void pcl_topic_callback(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
-  {
+  void pcl_topic_callback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
     unsigned int num_points = msg->width;
     RCLCPP_INFO(this->get_logger(),
                 "The number of points in the input pointcloud is %i",
@@ -194,13 +191,10 @@ public:
     // this->cloud_filtered = this->cloud;
 
     geometry_msgs::msg::TransformStamped sensor_to_world_transform_stamped;
-    try
-    {
+    try {
       sensor_to_world_transform_stamped = tf_buffer->lookupTransform(
           "odom", cloud->header.frame_id, tf2::TimePointZero);
-    }
-    catch (const tf2::TransformException &ex)
-    {
+    } catch (const tf2::TransformException &ex) {
       RCLCPP_WARN(this->get_logger(), "%s", ex.what());
       return;
     }
@@ -229,8 +223,7 @@ public:
 
 public:
   void voxel_downsample(const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud,
-                        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_filtered)
-  {
+                        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_filtered) {
 
     pcl::VoxelGrid<pcl::PointXYZ> sor;
     sor.setInputCloud(cloud);
@@ -241,8 +234,7 @@ public:
 public:
   void pcl_conv_oct(const tf2::Vector3 &sensor_origin_tf,
                     const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud_obs,
-                    const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud_ground)
-  {
+                    const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud_ground) {
     const auto sensor_origin = octomap::pointTfToOctomap(sensor_origin_tf);
     octomap::KeySet free_cells, occupied_cells;
     // For ground pcl, mark all cells free
@@ -296,41 +288,31 @@ public:
     // }
     // For Obstacle pcl
     for (pcl::PointCloud<pcl::PointXYZ>::const_iterator it = cloud_obs->begin();
-         it != cloud_obs->end(); it++)
-    {
+         it != cloud_obs->end(); it++) {
       octomap::point3d point(it->x, it->y, it->z);
       // std::cout << it->x << std::endl;
       // if (it->x != std::numeric_limits<double>::infinity()) {
-      if ((max_range < 0.0) || ((point - sensor_origin).norm() <= max_range))
-      {
-        if (octree_->computeRayKeys(sensor_origin, point, key_ray_))
-        {
+      if ((max_range < 0.0) || ((point - sensor_origin).norm() <= max_range)) {
+        if (octree_->computeRayKeys(sensor_origin, point, key_ray_)) {
           free_cells.insert(key_ray_.begin(), key_ray_.end());
         }
         octomap::OcTreeKey key;
-        if (octree_->coordToKeyChecked(point, key))
-        {
+        if (octree_->coordToKeyChecked(point, key)) {
           occupied_cells.insert(key);
         }
-      }
-      else
-      {
+      } else {
         octomap::point3d new_end =
             sensor_origin + (point - sensor_origin).normalized() * max_range;
-        if (octree_->computeRayKeys(sensor_origin, new_end, key_ray_))
-        {
+        if (octree_->computeRayKeys(sensor_origin, new_end, key_ray_)) {
           free_cells.insert(key_ray_.begin(), key_ray_.end());
 
           octomap::point3d new_end =
               sensor_origin + (point - sensor_origin).normalized() * max_range;
           octomap::OcTreeKey end_key;
 
-          if (octree_->coordToKeyChecked(new_end, end_key))
-          {
+          if (octree_->coordToKeyChecked(new_end, end_key)) {
             free_cells.insert(end_key);
-          }
-          else
-          {
+          } else {
             RCLCPP_ERROR_STREAM(get_logger(),
                                 "Could not generate Key for endpoint "
                                     << new_end);
@@ -339,10 +321,8 @@ public:
       }
     }
     for (auto it = free_cells.begin(), end = free_cells.end(); it != end;
-         ++it)
-    {
-      if (occupied_cells.find(*it) == occupied_cells.end())
-      {
+         ++it) {
+      if (occupied_cells.find(*it) == occupied_cells.end()) {
         octree_->updateNode(*it, false);
       }
     }
@@ -350,26 +330,22 @@ public:
     this->octomap_publisher->publish(msg);
     // now mark all occupied cells:
     for (auto it = occupied_cells.begin(), end = occupied_cells.end();
-         it != end; it++)
-    {
+         it != end; it++) {
       octree_->updateNode(*it, true);
       timestamp_map[*it] = this->get_clock()->now().nanoseconds();
     }
     // msg.header.stamp = this->get_clock();
     for (OcTreeT::iterator it = octree_->begin_leafs(),
                            end = octree_->end_leafs();
-         it != end; ++it)
-    {
+         it != end; ++it) {
       auto time_it = timestamp_map.find(it.getKey());
-      if (time_it != timestamp_map.end())
-      {
+      if (time_it != timestamp_map.end()) {
         std::cout << it.getKey()[0];
         std::cout << this->get_clock()->now().nanoseconds() - time_it->second
                   << "\n";
         if ((this->get_clock()->now().nanoseconds() - time_it->second) /
                 100000 >
-            100000)
-        {
+            100000) {
           it->setLogOdds(octomap::logodds(0.0));
           timestamp_map.erase(time_it);
         }
@@ -400,17 +376,13 @@ public:
     bool res = grid_map::GridMapOctomapConverter::fromOctomap(
         *octree_, "elevation", gridMap);
     // std::cout << gridM std::endl;
-    if (res)
-    {
+    if (res) {
       // grid_map::GridMapRosConverter::toOccupancyGrid(gridMap, "elevation",
       // 100.0, -1.0, _grid);
 
-      for (int r = 0; r < gridMap.get("elevation").rows(); r++)
-      {
-        for (int c = 0; c < gridMap.get("elevation").cols(); c++)
-        {
-          if (std::isnan(gridMap.get("elevation")(r, c)))
-          {
+      for (int r = 0; r < gridMap.get("elevation").rows(); r++) {
+        for (int c = 0; c < gridMap.get("elevation").cols(); c++) {
+          if (std::isnan(gridMap.get("elevation")(r, c))) {
             gridMap.get("elevation")(r, c) = -1;
           }
         }
@@ -422,28 +394,26 @@ public:
       // cv::waitKey(0);
       cv::cvtColor(map_img, gray_img, cv::COLOR_BGR2GRAY);
 
-      // Size is taken as 2n+1: n being number of cells (half bot width: 0.4m -> 4 cells)
-      cv::Mat element = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(2 * 4 + 1, 2 * 4 + 1));
+      // Size is taken as 2n+1: n being number of cells (half bot width: 0.4m ->
+      // 4 cells)
+      cv::Mat element = cv::getStructuringElement(
+          cv::MORPH_RECT, cv::Size(2 * 4 + 1, 2 * 4 + 1));
       cv::dilate(gray_img, gray_img, element);
 
-      cv::GaussianBlur(gray_img, map_img, cv::Size(11, 11), 7, 7);
+      cv::GaussianBlur(gray_img, map_img, cv::Size(11, 11), 0, 0);
 
       grid_map::GridMapCvConverter::addLayerFromImage<unsigned char, 4>(
           map_img, "inflation", gridMap, 0, 100);
       // std::cout << gridMap.get("elevation") << "\n";
-      for (int r = 0; r < gridMap.get("inflation").rows(); r++)
-      {
-        for (int c = 0; c < gridMap.get("inflation").cols(); c++)
-        {
-          if (gridMap.get("elevation")(r, c) == -1)
-          {
+      for (int r = 0; r < gridMap.get("inflation").rows(); r++) {
+        for (int c = 0; c < gridMap.get("inflation").cols(); c++) {
+          if (gridMap.get("elevation")(r, c) == -1) {
             gridMap.get("elevation")(r, c) = 0;
           }
 
           gridMap.get("inflation")(r, c) =
               (gridMap.get("inflation")(r, c) + gridMap.get("elevation")(r, c));
-          if (gridMap.get("inflation")(r, c) > 1)
-          {
+          if (gridMap.get("inflation")(r, c) > 1) {
             gridMap.get("inflation")(r, c) = 1;
           }
         }
@@ -457,16 +427,13 @@ public:
       _grid.header.frame_id = "odom";
       this->grid_map_publisher->publish(_grid);
       std::cout << "grid_size " << _grid.info.width << "\n";
-    }
-    else
-    {
+    } else {
       std::cout << "Error";
     }
   }
 
 public:
-  void plane_seg(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud)
-  {
+  void plane_seg(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud) {
     pcl::SACSegmentation<pcl::PointXYZ> seg;
     seg.setOptimizeCoefficients(true);
     seg.setModelType(pcl::SACMODEL_PLANE);
@@ -504,24 +471,18 @@ public:
     pcl::toROSMsg(*this->cloud_o, obs);
     this->pcl_obs_publisher->publish(obs);
   }
-  bool isSpeckleNode(const octomap::OcTreeKey &n_key) const
-  {
+  bool isSpeckleNode(const octomap::OcTreeKey &n_key) const {
     octomap::OcTreeKey key;
     bool neighbor_found = false;
     for (key[2] = n_key[2] - 1; !neighbor_found && key[2] <= n_key[2] + 1;
-         ++key[2])
-    {
+         ++key[2]) {
       for (key[1] = n_key[1] - 1; !neighbor_found && key[1] <= n_key[1] + 1;
-           ++key[1])
-      {
+           ++key[1]) {
         for (key[0] = n_key[0] - 1; !neighbor_found && key[0] <= n_key[0] + 1;
-             ++key[0])
-        {
-          if (key != n_key)
-          {
+             ++key[0]) {
+          if (key != n_key) {
             octomap::OcTreeNode *node = octree_->search(key);
-            if (node && octree_->isNodeOccupied(node))
-            {
+            if (node && octree_->isNodeOccupied(node)) {
               // we have a neighbor=> break!
               neighbor_found = true;
             }
@@ -532,15 +493,13 @@ public:
 
     return neighbor_found;
   }
-  grid_map::Matrix replaceNan(grid_map::Matrix &m, const double newValue)
-  {
+  grid_map::Matrix replaceNan(grid_map::Matrix &m, const double newValue) {
 
     return m;
   }
 };
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
   rclcpp::init(argc, argv);
   rclcpp::spin(std::make_shared<pcl_oct>());
 
