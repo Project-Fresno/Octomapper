@@ -346,7 +346,7 @@ public:
         octree_->updateNode(*it, false);
       }
     }
-    std::cout << free_cells.size() << std::endl;
+    // std::cout << free_cells.size() << std::endl;
     this->octomap_publisher->publish(msg);
     // now mark all occupied cells:
     for (auto it = occupied_cells.begin(), end = occupied_cells.end();
@@ -363,12 +363,12 @@ public:
       auto time_it = timestamp_map.find(it.getKey());
       if (time_it != timestamp_map.end())
       {
-        std::cout << it.getKey()[0];
-        std::cout << this->get_clock()->now().nanoseconds() - time_it->second
-                  << "\n";
+        // // std::cout << it.getKey()[0];
+        // // std::cout << this->get_clock()->now().nanoseconds() - time_it->second
+        //           << "\n";
         if ((this->get_clock()->now().nanoseconds() - time_it->second) /
                 100000 >
-            100000)
+            1000)
         {
           it->setLogOdds(octomap::logodds(0.0));
           timestamp_map.erase(time_it);
@@ -378,7 +378,7 @@ public:
         // }
       }
     }
-    std::cout << occupied_cells.size() << std::endl;
+    // std::cout << occupied_cells.size() << std::endl;
     octree_->prune();
     RCLCPP_ERROR_STREAM(get_logger(), "size:" << octree_->size());
     octomap_msgs::fullMapToMsg(*this->octree_, msg);
@@ -422,7 +422,7 @@ public:
       // cv::waitKey(0);
       cv::cvtColor(map_img, gray_img, cv::COLOR_BGR2GRAY);
 
-      // Size is taken as 2n+1: n being number of cells (half bot width: 0.4m -> 4 cells)
+      // Size is taken as 2n+1: n being number of cells (half bot width: 0.4m -> 4)
       cv::Mat element = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(2 * 4 + 1, 2 * 4 + 1));
       cv::dilate(gray_img, gray_img, element);
 
@@ -448,7 +448,7 @@ public:
           }
         }
       }
-      std::cout << gridMap.get("inflation") << "\n";
+      // std::cout << gridMap.get("inflation") << "\n";
       grid_map::GridMapRosConverter::toOccupancyGrid(gridMap, "inflation", 0, 1,
                                                      _grid);
       // cv::imshow("Blured", map_img);
@@ -456,7 +456,7 @@ public:
 
       _grid.header.frame_id = "odom";
       this->grid_map_publisher->publish(_grid);
-      std::cout << "grid_size " << _grid.info.width << "\n";
+      // std::cout << "grid_size " << _grid.info.width << "\n";
     }
     else
     {
