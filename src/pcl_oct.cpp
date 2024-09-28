@@ -215,16 +215,17 @@ public:
     condrem.setCondition(z_obstacle_cond);
     condrem.filter(*this->cloud_o);
     // condrem.setNegative(true);
-    condrem_inv.setInputCloud(this->cloud_filtered);
-    condrem_inv.setCondition(z_obstacle_cond_inv);
-    condrem_inv.filter(*this->cloud_p);
+    // condrem_inv.setInputCloud(this->cloud_filtered);
+    // condrem_inv.setCondition(z_obstacle_cond_inv);
+    // condrem_inv.filter(*this->cloud_p);
 
-    pcl::toROSMsg(*this->cloud_p, plane);
-    plane.header.frame_id = "odom";
-    this->pcl_ground_publisher->publish(plane);
+    // pcl::toROSMsg(*this->cloud_p, plane);
+    // plane.header.frame_id = "odom";
+    // this->pcl_ground_publisher->publish(plane);
 
     tf2::Vector3 sensor_to_world_vec3{t.x, t.y, t.z};
-    pcl_conv_oct(sensor_to_world_vec3, this->cloud_o, this->cloud_p);
+    // pcl_conv_oct(sensor_to_world_vec3, this->cloud_o, this->cloud_p);
+    pcl_conv_oct(sensor_to_world_vec3, this->cloud_o);
   }
 
 public:
@@ -240,8 +241,7 @@ public:
 
 public:
   void pcl_conv_oct(const tf2::Vector3 &sensor_origin_tf,
-                    const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud_obs,
-                    const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud_ground)
+                    const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud_obs)
   {
     const auto sensor_origin = octomap::pointTfToOctomap(sensor_origin_tf);
     octomap::KeySet free_cells, occupied_cells;
@@ -423,10 +423,11 @@ public:
       cv::cvtColor(map_img, gray_img, cv::COLOR_BGR2GRAY);
 
       // Size is taken as 2n+1: n being number of cells (half bot width: 0.4m -> 4)
-      cv::Mat element = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(2 * 4 + 1, 2 * 4 + 1));
+      cv::Mat element = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(2 * 5, 2 * 5));
       cv::dilate(gray_img, gray_img, element);
 
-      cv::GaussianBlur(gray_img, map_img, cv::Size(11, 11), 7, 7);
+      // cv::GaussianBlur(gray_img, map_img, cv::Size(6, 6), 2, 2); //
+      cv::GaussianBlur(gray_img, map_img, cv::Size(9, 9), 7, 7);
 
       grid_map::GridMapCvConverter::addLayerFromImage<unsigned char, 4>(
           map_img, "inflation", gridMap, 0, 100);
