@@ -167,7 +167,7 @@ public:
 
     octree_ = std::make_unique<OcTreeT>(0.1);
     octree_->setProbHit(0.85);
-    octree_->setProbMiss(0.45);
+    octree_->setProbMiss(0.75);
     octree_->setClampingThresMin(0.12);
     octree_->setClampingThresMax(0.95);
     tree_depth_ = octree_->getTreeDepth();
