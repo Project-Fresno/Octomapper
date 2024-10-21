@@ -166,7 +166,7 @@ public:
             this->get_parameter("ground_cutoff_height").as_double())));
 
     octree_ = std::make_unique<OcTreeT>(0.1);
-    octree_->setProbHit(0.65);
+    octree_->setProbHit(0.85);
     octree_->setProbMiss(0.45);
     octree_->setClampingThresMin(0.12);
     octree_->setClampingThresMax(0.95);
@@ -370,8 +370,8 @@ public:
                 100000 >
             1000)
         {
-          it->setLogOdds(octomap::logodds(0.0));
-          timestamp_map.erase(time_it);
+          // it->setLogOdds(octomap::logodds(0.0));
+          // timestamp_map.erase(time_it);
         }
         // if (isSpeckleNode(it.getKey())) {
         //   it->setLogOdds(octomap::logodds(0.0));
@@ -427,7 +427,7 @@ public:
       cv::dilate(gray_img, gray_img, element);
 
       // cv::GaussianBlur(gray_img, map_img, cv::Size(6, 6), 2, 2); //
-      cv::GaussianBlur(gray_img, map_img, cv::Size(9, 9), 7, 7);
+      cv::GaussianBlur(gray_img, map_img, cv::Size(3, 3), 0.1, 0.1);
 
       grid_map::GridMapCvConverter::addLayerFromImage<unsigned char, 4>(
           map_img, "inflation", gridMap, 0, 100);
