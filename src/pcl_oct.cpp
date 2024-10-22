@@ -105,7 +105,7 @@ private:
   std::shared_ptr<tf2_ros::TransformListener> tf_listener{nullptr};
   std::unique_ptr<tf2_ros::Buffer> tf_buffer;
   octomap::KeyRay key_ray_;
-  float max_range = 10;
+  float max_range = 12;
   int occupancy_min_z_ = -100;
   int occupancy_max_z_ = 100;
   octomap_msgs::msg::Octomap msg;
@@ -301,7 +301,9 @@ public:
       octomap::point3d point(it->x, it->y, it->z);
       // std::cout << it->x << std::endl;
       // if (it->x != std::numeric_limits<double>::infinity()) {
-      if ((max_range < 0.0) || ((point - sensor_origin).norm() <= max_range))
+      auto del_x = point.x() - sensor_origin.x();
+      auto del_y = point.y() - sensor_origin.y();
+      if (((max_range < 0.0) || ((point - sensor_origin).norm() <= max_range)) && !(del_x >= -0.5 && del_x <= 0) && !(del_y >= -0.4 && del_y <= 0.4))
       {
         if (octree_->computeRayKeys(sensor_origin, point, key_ray_))
         {
