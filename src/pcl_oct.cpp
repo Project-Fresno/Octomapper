@@ -367,11 +367,11 @@ public:
         // // std::cout << this->get_clock()->now().nanoseconds() - time_it->second
         //           << "\n";
         if ((this->get_clock()->now().nanoseconds() - time_it->second) /
-                100000 >
-            1000)
+                1000000 >
+            500)
         {
-          // it->setLogOdds(octomap::logodds(0.0));
-          // timestamp_map.erase(time_it);
+          it->setLogOdds(octomap::logodds(0.0));
+          timestamp_map.erase(time_it);
         }
         // if (isSpeckleNode(it.getKey())) {
         //   it->setLogOdds(octomap::logodds(0.0));
