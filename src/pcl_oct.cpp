@@ -150,20 +150,20 @@ public:
     tf_buffer = std::make_unique<tf2_ros::Buffer>(this->get_clock());
     tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer);
 
-    pcl::ConditionAnd<POINT_TYPE>::Ptr range_cond(
-        new pcl::ConditionAnd<POINT_TYPE>());
-    pcl::ConditionAnd<POINT_TYPE>::Ptr range_cond_inv(
-        new pcl::ConditionAnd<POINT_TYPE>());
-    z_obstacle_cond = range_cond;
-    z_obstacle_cond_inv = range_cond_inv;
-    z_obstacle_cond->addComparison(pcl::FieldComparison<POINT_TYPE>::Ptr(
-        new pcl::FieldComparison<POINT_TYPE>(
-            "z", pcl::ComparisonOps::GT,
-            this->get_parameter("ground_cutoff_height").as_double())));
-    z_obstacle_cond_inv->addComparison(pcl::FieldComparison<POINT_TYPE>::Ptr(
-        new pcl::FieldComparison<POINT_TYPE>(
-            "z", pcl::ComparisonOps::LT,
-            this->get_parameter("ground_cutoff_height").as_double())));
+    // pcl::ConditionAnd<POINT_TYPE>::Ptr range_cond(
+    //     new pcl::ConditionAnd<POINT_TYPE>());
+    // pcl::ConditionAnd<POINT_TYPE>::Ptr range_cond_inv(
+    //     new pcl::ConditionAnd<POINT_TYPE>());
+    // z_obstacle_cond = range_cond;
+    // z_obstacle_cond_inv = range_cond_inv;
+    // z_obstacle_cond->addComparison(pcl::FieldComparison<POINT_TYPE>::Ptr(
+    //     new pcl::FieldComparison<POINT_TYPE>(
+    //         "z", pcl::ComparisonOps::GT,
+    //         this->get_parameter("ground_cutoff_height").as_double())));
+    // z_obstacle_cond_inv->addComparison(pcl::FieldComparison<POINT_TYPE>::Ptr(
+    //     new pcl::FieldComparison<POINT_TYPE>(
+    //         "z", pcl::ComparisonOps::LT,
+    //         this->get_parameter("ground_cutoff_height").as_double())));
 
     octree_ = std::make_unique<OcTreeT>(0.1);
     octree_->setProbHit(0.85);
@@ -211,9 +211,9 @@ public:
     pcl::transformPointCloud(*this->cloud_filtered, *this->cloud_filtered,
                              sensor_to_world);
     const auto &t = sensor_to_world_transform_stamped.transform.translation;
-    condrem.setInputCloud(this->cloud_filtered);
-    condrem.setCondition(z_obstacle_cond);
-    condrem.filter(*this->cloud_o);
+    // condrem.setInputCloud(this->cloud_filtered);
+    // condrem.setCondition(z_obstacle_cond);
+    // condrem.filter(*this->cloud_o);
     // condrem.setNegative(true);
     // condrem_inv.setInputCloud(this->cloud_filtered);
     // condrem_inv.setCondition(z_obstacle_cond_inv);
@@ -225,7 +225,7 @@ public:
 
     tf2::Vector3 sensor_to_world_vec3{t.x, t.y, t.z};
     // pcl_conv_oct(sensor_to_world_vec3, this->cloud_o, this->cloud_p);
-    pcl_conv_oct(sensor_to_world_vec3, this->cloud_o);
+    pcl_conv_oct(sensor_to_world_vec3, this->cloud_filtered);
   }
 
 public:
@@ -467,79 +467,79 @@ public:
     }
   }
 
-public:
-  void plane_seg(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud)
-  {
-    pcl::SACSegmentation<pcl::PointXYZ> seg;
-    seg.setOptimizeCoefficients(true);
-    seg.setModelType(pcl::SACMODEL_PLANE);
-    seg.setMethodType(pcl::SAC_RANSAC);
-    seg.setDistanceThreshold(0.01);
-    seg.setInputCloud(cloud);
-    seg.segment(*inliers, *coefficients);
-    std::cerr << "Model inliers: " << inliers->indices.size() << std::endl;
-    // for (const auto &idx : inliers->indices)
-    //   std::cerr << idx << "    " << cloud->points[idx].x << " "
-    //             << cloud->points[idx].y << " " << cloud->points[idx].z
-    //             << std::endl;
-    std::cerr << "Model coefficients: " << coefficients->values[0] << " "
-              << coefficients->values[1] << " " << coefficients->values[2]
-              << " " << coefficients->values[3] << std::endl;
-    Eigen::Vector3f plane_normal(coefficients->values[0],
-                                 coefficients->values[1],
-                                 coefficients->values[2]);
-    std::cout << "Normal vector: (" << plane_normal[0] << ", "
-              << plane_normal[1] << ", " << plane_normal[2] << ")" << std::endl;
-    Eigen::Vector3f normalized_normal = plane_normal.normalized();
-    float dot_product = normalized_normal[0] * 0 + normalized_normal[1] * 0 +
-                        normalized_normal[2] * 1;
-    float slope = std::acos(dot_product);
-    float theta = std::atan(slope) * 180 / M_PI;
-    std::cout << "Theta: " << theta << std::endl;
-    extract.setInputCloud(cloud);
-    extract.setIndices(inliers);
-    extract.setNegative(false);
-    extract.filter(*this->cloud_p);
-    extract.setNegative(true);
-    extract.filter(*this->cloud_o);
-    pcl::toROSMsg(*this->cloud_p, plane);
-    this->pcl_ground_publisher->publish(plane);
-    pcl::toROSMsg(*this->cloud_o, obs);
-    this->pcl_obs_publisher->publish(obs);
-  }
-  bool isSpeckleNode(const octomap::OcTreeKey &n_key) const
-  {
-    octomap::OcTreeKey key;
-    bool neighbor_found = false;
-    for (key[2] = n_key[2] - 1; !neighbor_found && key[2] <= n_key[2] + 1;
-         ++key[2])
-    {
-      for (key[1] = n_key[1] - 1; !neighbor_found && key[1] <= n_key[1] + 1;
-           ++key[1])
-      {
-        for (key[0] = n_key[0] - 1; !neighbor_found && key[0] <= n_key[0] + 1;
-             ++key[0])
-        {
-          if (key != n_key)
-          {
-            octomap::OcTreeNode *node = octree_->search(key);
-            if (node && octree_->isNodeOccupied(node))
-            {
-              // we have a neighbor=> break!
-              neighbor_found = true;
-            }
-          }
-        }
-      }
-    }
+// public:
+  // void plane_seg(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud)
+  // {
+  //   pcl::SACSegmentation<pcl::PointXYZ> seg;
+  //   seg.setOptimizeCoefficients(true);
+  //   seg.setModelType(pcl::SACMODEL_PLANE);
+  //   seg.setMethodType(pcl::SAC_RANSAC);
+  //   seg.setDistanceThreshold(0.01);
+  //   seg.setInputCloud(cloud);
+  //   seg.segment(*inliers, *coefficients);
+  //   std::cerr << "Model inliers: " << inliers->indices.size() << std::endl;
+  //   // for (const auto &idx : inliers->indices)
+  //   //   std::cerr << idx << "    " << cloud->points[idx].x << " "
+  //   //             << cloud->points[idx].y << " " << cloud->points[idx].z
+  //   //             << std::endl;
+  //   std::cerr << "Model coefficients: " << coefficients->values[0] << " "
+  //             << coefficients->values[1] << " " << coefficients->values[2]
+  //             << " " << coefficients->values[3] << std::endl;
+  //   Eigen::Vector3f plane_normal(coefficients->values[0],
+  //                                coefficients->values[1],
+  //                                coefficients->values[2]);
+  //   std::cout << "Normal vector: (" << plane_normal[0] << ", "
+  //             << plane_normal[1] << ", " << plane_normal[2] << ")" << std::endl;
+  //   Eigen::Vector3f normalized_normal = plane_normal.normalized();
+  //   float dot_product = normalized_normal[0] * 0 + normalized_normal[1] * 0 +
+  //                       normalized_normal[2] * 1;
+  //   float slope = std::acos(dot_product);
+  //   float theta = std::atan(slope) * 180 / M_PI;
+  //   std::cout << "Theta: " << theta << std::endl;
+  //   extract.setInputCloud(cloud);
+  //   extract.setIndices(inliers);
+  //   extract.setNegative(false);
+  //   extract.filter(*this->cloud_p);
+  //   extract.setNegative(true);
+  //   extract.filter(*this->cloud_o);
+  //   pcl::toROSMsg(*this->cloud_p, plane);
+  //   this->pcl_ground_publisher->publish(plane);
+  //   pcl::toROSMsg(*this->cloud_o, obs);
+  //   this->pcl_obs_publisher->publish(obs);
+  // }
+  // bool isSpeckleNode(const octomap::OcTreeKey &n_key) const
+  // {
+  //   octomap::OcTreeKey key;
+  //   bool neighbor_found = false;
+  //   for (key[2] = n_key[2] - 1; !neighbor_found && key[2] <= n_key[2] + 1;
+  //        ++key[2])
+  //   {
+  //     for (key[1] = n_key[1] - 1; !neighbor_found && key[1] <= n_key[1] + 1;
+  //          ++key[1])
+  //     {
+  //       for (key[0] = n_key[0] - 1; !neighbor_found && key[0] <= n_key[0] + 1;
+  //            ++key[0])
+  //       {
+  //         if (key != n_key)
+  //         {
+  //           octomap::OcTreeNode *node = octree_->search(key);
+  //           if (node && octree_->isNodeOccupied(node))
+  //           {
+  //             // we have a neighbor=> break!
+  //             neighbor_found = true;
+  //           }
+  //         }
+  //       }
+  //     }
+  //   }
 
-    return neighbor_found;
-  }
-  grid_map::Matrix replaceNan(grid_map::Matrix &m, const double newValue)
-  {
+  //   return neighbor_found;
+  // }
+  // grid_map::Matrix replaceNan(grid_map::Matrix &m, const double newValue)
+  // {
 
-    return m;
-  }
+  //   return m;
+  // }
 };
 
 int main(int argc, char *argv[])
