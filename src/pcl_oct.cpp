@@ -166,8 +166,8 @@ public:
     //         this->get_parameter("ground_cutoff_height").as_double())));
 
     octree_ = std::make_unique<OcTreeT>(0.1);
-    octree_->setProbHit(0.85);
-    octree_->setProbMiss(0.15);
+    octree_->setProbHit(0.95);
+    octree_->setProbMiss(0.05);
     octree_->setClampingThresMin(0.02);
     octree_->setClampingThresMax(0.98);
     tree_depth_ = octree_->getTreeDepth();
@@ -467,7 +467,7 @@ public:
     }
   }
 
-// public:
+  // public:
   // void plane_seg(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud)
   // {
   //   pcl::SACSegmentation<pcl::PointXYZ> seg;
