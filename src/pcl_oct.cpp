@@ -1,39 +1,20 @@
-#include <octomap/octomap_types.h>
 #define BOOST_BIND_NO_PLACEHOLDERS
 
 #include "iostream"
 #include "octomap_msgs/conversions.h"
-// #include "octomap_msgs/octomap_msgs/msg/octomap.hpp"
+#include <octomap/octomap_types.h>
 #include "octomap_msgs/msg/octomap.hpp"
 #include "octomap_ros/conversions.hpp"
-#include <octomap/ColorOcTree.h>
 #include <octomap/OcTreeKey.h>
 #include <octomap/octomap.h>
-// #include "octomap_msgs/"
+
 #include "grid_map_cv/GridMapCvConverter.hpp"
 #include "grid_map_ros/grid_map_ros.hpp"
 #include "nav_msgs/msg/occupancy_grid.hpp"
 #include <grid_map_core/GridMap.hpp>
 #include <grid_map_octomap/GridMapOctomapConverter.hpp>
 
-#include "pcl/common/transforms.h"
-#include "pcl_conversions/pcl_conversions.h"
-#include <pcl/features/normal_3d.h>
-#include <pcl/filters/conditional_removal.h>
-#include <pcl/filters/extract_indices.h>
-#include <pcl/filters/filter.h>
-#include <pcl/filters/passthrough.h>
-#include <pcl/filters/voxel_grid.h>
-#include <pcl/point_cloud.h>
-#include <pcl/point_types.h>
-#include <pcl/sample_consensus/method_types.h>
-#include <pcl/sample_consensus/model_types.h>
-#include <pcl/sample_consensus/sac_model_perpendicular_plane.h>
-#include <pcl/segmentation/region_growing.h>
-#include <pcl/segmentation/sac_segmentation.h>
-
 #include "rclcpp/rclcpp.hpp"
-#include "sensor_msgs/msg/point_cloud2.hpp"
 #include "sensor_msgs/msg/laser_scan.hpp"
 #include "std_msgs/msg/header.hpp"
 #include "tf2_ros/buffer.h"
@@ -49,8 +30,6 @@
 #include <opencv2/opencv.hpp>
 
 typedef octomap::OcTree OcTreeT;
-typedef pcl::PointCloud<pcl::Normal> NormalCloud;
-typedef pcl::PointXYZ POINT_TYPE;
 using std::placeholders::_1;
 
 class pcl_oct : public rclcpp::Node
@@ -103,11 +82,6 @@ public:
 public:
   void scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg)
   {
-    // unsigned int num_points = msg->width;
-    // RCLCPP_INFO(this->get_logger(),
-    //             "The number of points in the input pointcloud is %i",
-    //             num_points);
-
     geometry_msgs::msg::TransformStamped sensor_to_world_transform_stamped;
     try
     {
@@ -119,10 +93,6 @@ public:
       RCLCPP_WARN(this->get_logger(), "%s", ex.what());
       return;
     }
-    // Eigen::Matrix4f sensor_to_world =
-    //     tf2::transformToEigen(sensor_to_world_transform_stamped.transform)
-    //         .matrix()
-    //         .cast<float>();
 
     /*
      * Take the rotation of base_link wrt odom
@@ -204,11 +174,7 @@ public:
     {
       octree_->updateNode(*it, true);
     }
-
     octree_->prune();
-
-    // tf2::Vector3 sensor_to_world_vec3{t.x, t.y, t.z};
-    // pcl_conv_oct(sensor_to_world_vec3, this->cloud_filtered);
 
     bool res = grid_map::GridMapOctomapConverter::fromOctomap(*octree_, "elevation", gridMap);
     if (res)
@@ -223,6 +189,7 @@ public:
           }
         }
       }
+
       grid_map::GridMapCvConverter::toImage<unsigned char, 4>(
           gridMap, "elevation", CV_8UC4, 0, 100, map_img);
       cv::cvtColor(map_img, gray_img, cv::COLOR_BGR2GRAY);
@@ -235,7 +202,7 @@ public:
 
       grid_map::GridMapCvConverter::addLayerFromImage<unsigned char, 4>(
           map_img, "inflation", gridMap, 0, 100);
-      // std::cout << gridMap.get("elevation") << "\n";
+
       for (int r = 0; r < gridMap.get("inflation").rows(); r++)
       {
         for (int c = 0; c < gridMap.get("inflation").cols(); c++)
@@ -258,162 +225,12 @@ public:
 
       _grid.header.frame_id = "odom";
       this->grid_map_publisher->publish(_grid);
-      // std::cout << "grid_size " << _grid.info.width << "\n";
     }
     else
     {
       std::cout << "Error";
     }
   }
-
-  // public:
-  // void pcl_conv_oct(const tf2::Vector3 &sensor_origin_tf,
-  //                   const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud_obs)
-  // {
-  //   const auto sensor_origin = octomap::pointTfToOctomap(sensor_origin_tf);
-  //   octomap::KeySet free_cells, occupied_cells;
-
-  //   // For Obstacle pcl
-  //   for (pcl::PointCloud<pcl::PointXYZ>::const_iterator it = cloud_obs->begin();
-  //        it != cloud_obs->end(); it++)
-  //   {
-  //     octomap::point3d point(it->x, it->y, it->z);
-  //     auto del_x = point.x() - sensor_origin.x();
-  //     auto del_y = point.y() - sensor_origin.y();
-  //     if (((max_range < 0.0) || ((point - sensor_origin).norm() <= max_range)) && !(del_x >= -0.5 && del_x <= 0) && !(del_y >= -0.4 && del_y <= 0.4))
-  //     {
-  //       if (octree_->computeRayKeys(sensor_origin, point, key_ray_))
-  //       {
-  //         free_cells.insert(key_ray_.begin(), key_ray_.end());
-  //       }
-  //       octomap::OcTreeKey key;
-  //       if (octree_->coordToKeyChecked(point, key))
-  //       {
-  //         occupied_cells.insert(key);
-  //       }
-  //     }
-  //     else
-  //     {
-  //       octomap::point3d new_end =
-  //           sensor_origin + (point - sensor_origin).normalized() * max_range;
-  //       if (octree_->computeRayKeys(sensor_origin, new_end, key_ray_))
-  //       {
-  //         free_cells.insert(key_ray_.begin(), key_ray_.end());
-
-  //         octomap::point3d new_end =
-  //             sensor_origin + (point - sensor_origin).normalized() * max_range;
-  //         octomap::OcTreeKey end_key;
-
-  //         if (octree_->coordToKeyChecked(new_end, end_key))
-  //         {
-  //           free_cells.insert(end_key);
-  //         }
-  //         else
-  //         {
-  //           RCLCPP_ERROR_STREAM(get_logger(),
-  //                               "Could not generate Key for endpoint "
-  //                                   << new_end);
-  //         }
-  //       }
-  //     }
-  //   }
-  //   for (auto it = free_cells.begin(), end = free_cells.end(); it != end;
-  //        ++it)
-  //   {
-  //     if (occupied_cells.find(*it) == occupied_cells.end())
-  //     {
-  //       octree_->updateNode(*it, false);
-  //     }
-  //   }
-
-  //   // now mark all occupied cells:
-  //   for (auto it = occupied_cells.begin(), end = occupied_cells.end();
-  //        it != end; it++)
-  //   {
-  //     octree_->updateNode(*it, true);
-  //     timestamp_map[*it] = this->get_clock()->now().nanoseconds();
-  //   }
-  //   for (OcTreeT::iterator it = octree_->begin_leafs(),
-  //                          end = octree_->end_leafs();
-  //        it != end; ++it)
-  //   {
-  //     auto time_it = timestamp_map.find(it.getKey());
-  //     if (time_it != timestamp_map.end())
-  //     {
-  //       // // std::cout << it.getKey()[0];
-  //       // // std::cout << this->get_clock()->now().nanoseconds() - time_it->second
-  //       //           << "\n";
-  //       // if ((this->get_clock()->now().nanoseconds() - time_it->second) /
-  //       //         1000000 >
-  //       //     500)
-  //       // {
-  //       //   it->setLogOdds(octomap::logodds(0.0));
-  //       //   timestamp_map.erase(time_it);
-  //       // }
-  //     }
-  //   }
-  //   // std::cout << occupied_cells.size() << std::endl;
-  //   octree_->prune();
-  //   RCLCPP_ERROR_STREAM(get_logger(), "size:" << octree_->size());
-  //   octomap_msgs::fullMapToMsg(*this->octree_, msg);
-  //   msg.header.frame_id = "odom";
-
-  //   bool res = grid_map::GridMapOctomapConverter::fromOctomap(
-  //       *octree_, "elevation", gridMap);
-  //   if (res)
-  //   {
-  //     for (int r = 0; r < gridMap.get("elevation").rows(); r++)
-  //     {
-  //       for (int c = 0; c < gridMap.get("elevation").cols(); c++)
-  //       {
-  //         if (std::isnan(gridMap.get("elevation")(r, c)))
-  //         {
-  //           gridMap.get("elevation")(r, c) = -1;
-  //         }
-  //       }
-  //     }
-  //     grid_map::GridMapCvConverter::toImage<unsigned char, 4>(
-  //         gridMap, "elevation", CV_8UC4, 0, 100, map_img);
-  //     cv::cvtColor(map_img, gray_img, cv::COLOR_BGR2GRAY);
-
-  //     // Size is taken as 2n+1: n being number of cells (half bot width: 0.4m -> 4)
-  //     cv::Mat element = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(2 * 5, 2 * 5));
-  //     cv::dilate(gray_img, gray_img, element);
-
-  //     cv::GaussianBlur(gray_img, map_img, cv::Size(3, 3), 0.1, 0.1);
-
-  //     grid_map::GridMapCvConverter::addLayerFromImage<unsigned char, 4>(
-  //         map_img, "inflation", gridMap, 0, 100);
-  //     // std::cout << gridMap.get("elevation") << "\n";
-  //     for (int r = 0; r < gridMap.get("inflation").rows(); r++)
-  //     {
-  //       for (int c = 0; c < gridMap.get("inflation").cols(); c++)
-  //       {
-  //         if (gridMap.get("elevation")(r, c) == -1)
-  //         {
-  //           gridMap.get("elevation")(r, c) = 0;
-  //         }
-
-  //         gridMap.get("inflation")(r, c) =
-  //             (gridMap.get("inflation")(r, c) + gridMap.get("elevation")(r, c));
-  //         if (gridMap.get("inflation")(r, c) > 1)
-  //         {
-  //           gridMap.get("inflation")(r, c) = 1;
-  //         }
-  //       }
-  //     }
-  //     grid_map::GridMapRosConverter::toOccupancyGrid(gridMap, "inflation", 0, 1,
-  //                                                    _grid);
-
-  //     _grid.header.frame_id = "odom";
-  //     this->grid_map_publisher->publish(_grid);
-  //     // std::cout << "grid_size " << _grid.info.width << "\n";
-  //   }
-  //   else
-  //   {
-  //     std::cout << "Error";
-  //   }
-  // }
 };
 
 int main(int argc, char *argv[])
