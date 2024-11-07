@@ -141,7 +141,7 @@ public:
 
       if (octree_->coordToKeyChecked(sensor_origin + point, key))
       {
-        if ((r < max_range) && !(point.x() >= -0.6 && point.x() <= 0) && !(point.y() >= -0.5 && point.y() <= 0.5))
+        if ((r < max_range) && !(point.x() >= -0.6 && point.x() <= 0) && !(point.y() >= -0.2 && point.y() <= 0.2))
         {
           occupied_cells.insert(key);
         }
@@ -189,7 +189,7 @@ public:
       cv::cvtColor(map_img, gray_img, cv::COLOR_BGR2GRAY);
 
       // Size is taken as 2n+1: n being number of cells (half bot width: 0.4m -> 4)
-      cv::Mat element = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(2 * 5, 2 * 5));
+      cv::Mat element = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(2 * 4 + 1, 2 * 4 + 1));
       cv::dilate(gray_img, gray_img, element);
 
       cv::GaussianBlur(gray_img, map_img, cv::Size(3, 3), 0.1, 0.1);
