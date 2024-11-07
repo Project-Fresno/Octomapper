@@ -52,7 +52,7 @@ private:
   std::unique_ptr<tf2_ros::Buffer> tf_buffer;
   octomap::KeyRay key_ray_;
 
-  float max_range = 12;
+  double max_range = 12;
 
   nav_msgs::msg::OccupancyGrid _grid;
   grid_map::GridMap gridMap;
@@ -119,47 +119,41 @@ public:
 
     double start_angle = msg->angle_min + yaw;
     int max_ind = (msg->angle_max - msg->angle_min) / msg->angle_increment;
-    RCLCPP_WARN(this->get_logger(), "angle range: [%f, %f] -> [%f, %f]", msg->angle_min, msg->angle_max, start_angle, start_angle + max_ind * msg->angle_increment);
+
+    RCLCPP_WARN(this->get_logger(), "angle range: [%f, %f] -> [%f, %f]",
+                msg->angle_min, msg->angle_max, start_angle, start_angle + max_ind * msg->angle_increment);
+    // RCLCPP_WARN(this->get_logger(), "(%f, %f) -> (%f, %f)", r, theta, point.x(), point.y());
 
     octomap::KeySet free_cells, occupied_cells;
+
     for (int i = 0; i < max_ind; i++)
     {
       double r{msg->ranges[i]}, theta{start_angle + i * msg->angle_increment};
 
-      octomap::point3d point(r * cos(theta), r * sin(theta), 0);
-      // RCLCPP_WARN(this->get_logger(), "(%f, %f) -> (%f, %f)", r, theta, point.x(), point.y());
+      octomap::point3d point(cos(theta), sin(theta), 0);
+      point *= std::min(r, max_range);
 
-      if ((point.norm() <= max_range) && !(point.x() >= -0.6 && point.x() <= 0) && !(point.y() >= -0.5 && point.y() <= 0.5))
+      if (octree_->computeRayKeys(sensor_origin, sensor_origin + point, key_ray_))
       {
-        if (octree_->computeRayKeys(sensor_origin, sensor_origin + point, key_ray_))
-        {
-          free_cells.insert(key_ray_.begin(), key_ray_.end());
-        }
-        octomap::OcTreeKey key;
-        if (octree_->coordToKeyChecked(sensor_origin + point, key))
+        free_cells.insert(key_ray_.begin(), key_ray_.end());
+      }
+      octomap::OcTreeKey key;
+
+      if (octree_->coordToKeyChecked(sensor_origin + point, key))
+      {
+        if (!(point.x() >= -0.6 && point.x() <= 0) && !(point.y() >= -0.5 && point.y() <= 0.5))
         {
           occupied_cells.insert(key);
+        }
+        else
+        {
+          free_cells.insert(key);
         }
       }
       else
       {
-        octomap::point3d max_range_point = sensor_origin + point.normalized() * max_range;
-        if (octree_->computeRayKeys(sensor_origin, max_range_point, key_ray_))
-        {
-          free_cells.insert(key_ray_.begin(), key_ray_.end());
-          octomap::OcTreeKey end_key;
-
-          if (octree_->coordToKeyChecked(max_range_point, end_key))
-          {
-            free_cells.insert(end_key);
-          }
-          else
-          {
-            RCLCPP_ERROR_STREAM(get_logger(),
-                                "Could not generate Key for endpoint "
-                                    << max_range_point);
-          }
-        }
+        RCLCPP_ERROR_STREAM(get_logger(),
+                            "Could not generate Key for endpoint " << sensor_origin + point);
       }
     }
     for (auto it = free_cells.begin(); it != free_cells.end(); ++it)
