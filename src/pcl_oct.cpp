@@ -129,7 +129,7 @@ public:
       octomap::point3d point(r * cos(theta), r * sin(theta), 0);
       // RCLCPP_WARN(this->get_logger(), "(%f, %f) -> (%f, %f)", r, theta, point.x(), point.y());
 
-      if ((point.norm() <= max_range) && !(point.x() >= -0.5 && point.x() <= 0) && !(point.y() >= -0.4 && point.y() <= 0.4))
+      if ((point.norm() <= max_range) && !(point.x() >= -0.6 && point.x() <= 0) && !(point.y() >= -0.5 && point.y() <= 0.5))
       {
         if (octree_->computeRayKeys(sensor_origin, sensor_origin + point, key_ray_))
         {
