@@ -141,7 +141,7 @@ public:
 
       if (octree_->coordToKeyChecked(sensor_origin + point, key))
       {
-        if (!(point.x() >= -0.6 && point.x() <= 0) && !(point.y() >= -0.5 && point.y() <= 0.5))
+        if ((r < max_range) && !(point.x() >= -0.6 && point.x() <= 0) && !(point.y() >= -0.5 && point.y() <= 0.5))
         {
           occupied_cells.insert(key);
         }
