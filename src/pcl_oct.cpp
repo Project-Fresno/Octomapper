@@ -194,7 +194,7 @@ public:
       cv::GaussianBlur(inflated_img, blurred_img, cv::Size(3, 3), 0.1, 0.1);
 
       grid_map::GridMapCvConverter::addLayerFromImage<unsigned char, 4>(
-          inflated_img, "inflation", gridMap, 0, 100);
+          blurred_img, "inflation", gridMap, 0, 100);
 
       for (int r = 0; r < gridMap.get("inflation").rows(); r++)
       {
