@@ -56,8 +56,7 @@ private:
 
   nav_msgs::msg::OccupancyGrid _grid;
   grid_map::GridMap gridMap;
-  cv::Mat map_img;
-  cv::Mat gray_img;
+  cv::Mat map_img, gray_img, inflated_img, blurred_img;
 
 public:
   pcl_oct() : Node("pcl_oct")
@@ -190,12 +189,12 @@ public:
 
       // Size is taken as 2n+1: n being number of cells (half bot width: 0.4m -> 4)
       cv::Mat element = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(2 * 4 + 1, 2 * 4 + 1));
-      cv::dilate(gray_img, gray_img, element);
+      cv::dilate(gray_img, inflated_img, element);
 
-      cv::GaussianBlur(gray_img, map_img, cv::Size(3, 3), 0.1, 0.1);
+      cv::GaussianBlur(inflated_img, blurred_img, cv::Size(3, 3), 0.1, 0.1);
 
       grid_map::GridMapCvConverter::addLayerFromImage<unsigned char, 4>(
-          map_img, "inflation", gridMap, 0, 100);
+          inflated_img, "inflation", gridMap, 0, 100);
 
       for (int r = 0; r < gridMap.get("inflation").rows(); r++)
       {
